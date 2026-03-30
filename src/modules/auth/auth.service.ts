@@ -37,16 +37,18 @@ export const login = async (
     where: { email },
   });
 
-  // Always compare password to prevent timing attacks that reveal valid emails
-  const dummyHash = '$2b$10$dummyhashtopreventtimingattackpadding000';
-  const isPasswordValid = await comparePassword(password, user?.password ?? dummyHash);
-
-  if (!user || user.deletedAt || !isPasswordValid) {
+  if (!user || user.deletedAt) {
     throw new UnauthorizedError('Invalid email or password');
   }
 
   if (!user.isActive) {
     throw new UnauthorizedError('Account is inactive');
+  }
+
+  // Compare password
+  const isPasswordValid = await comparePassword(password, user.password);
+  if (!isPasswordValid) {
+    throw new UnauthorizedError('Invalid email or password');
   }
 
   // Parallelize non-blocking DB writes for speed
@@ -61,13 +63,12 @@ export const login = async (
   const refreshTokenValue = generateRefreshToken(tokenPayload);
   const tokenHash = crypto.createHash('sha256').update(refreshTokenValue).digest('hex');
 
-  // Fire all DB writes in parallel — none depend on each other
-  await Promise.all([
-    prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date() },
-    }),
-    prisma.auditLog.create({
+  // Non-critical writes — fire-and-forget (don't block login response)
+  prisma.user
+    .update({ where: { id: user.id }, data: { lastLoginAt: new Date() } })
+    .catch((err) => console.error('[Auth] updateLastLogin failed:', err));
+  prisma.auditLog
+    .create({
       data: {
         userId: user.id,
         action: CONSTANTS.AUDIT_ACTIONS.USER_LOGIN,
@@ -76,17 +77,19 @@ export const login = async (
         ipAddress,
         userAgent,
       },
-    }),
-    prisma.refreshToken.create({
-      data: {
-        userId: user.id,
-        tokenHash,
-        deviceInfo: userAgent?.substring(0, 500),
-        ipAddress,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      },
-    }),
-  ]);
+    })
+    .catch((err) => console.error('[Auth] auditLog failed:', err));
+
+  // Refresh token MUST be awaited — needed for auth cookie
+  await prisma.refreshToken.create({
+    data: {
+      userId: user.id,
+      tokenHash,
+      deviceInfo: userAgent?.substring(0, 500),
+      ipAddress,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+  });
 
   return {
     user: {
