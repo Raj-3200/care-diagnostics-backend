@@ -1,0 +1,495 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==================== ENUMS ====================
+
+enum Role {
+  ADMIN
+  RECEPTIONIST
+  LAB_TECHNICIAN
+  PATHOLOGIST
+  PATIENT
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum VisitStatus {
+  REGISTERED
+  SAMPLES_COLLECTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum SampleStatus {
+  PENDING_COLLECTION
+  COLLECTED
+  IN_LAB
+  PROCESSED
+  REJECTED
+}
+
+enum ResultStatus {
+  PENDING
+  ENTERED
+  VERIFIED
+  REJECTED
+}
+
+enum ReportStatus {
+  PENDING
+  GENERATED
+  APPROVED
+  DISPATCHED
+}
+
+enum InvoiceStatus {
+  PENDING
+  PARTIAL
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  UPI
+  ONLINE
+  INSURANCE
+}
+
+enum SampleType {
+  BLOOD
+  URINE
+  STOOL
+  SWAB
+  SPUTUM
+  TISSUE
+  CSF
+  OTHER
+}
+
+enum TestCategory {
+  HEMATOLOGY
+  BIOCHEMISTRY
+  MICROBIOLOGY
+  PATHOLOGY
+  IMMUNOLOGY
+  RADIOLOGY
+  MOLECULAR
+  OTHER
+}
+
+// ==================== MODELS ====================
+
+model Tenant {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String    @db.VarChar(255)
+  slug      String    @unique @db.VarChar(100)
+  address   String?
+  phone     String?   @db.VarChar(20)
+  email     String?   @db.VarChar(255)
+  logoUrl   String?   @map("logo_url")
+  settings  Json      @default("{}")
+  isActive  Boolean   @default(true) @map("is_active")
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  users           User[]
+  patients        Patient[]
+  visits          Visit[]
+  tests           Test[]
+  testOrders      TestOrder[]
+  samples         Sample[]
+  results         Result[]
+  reports         Report[]
+  invoices        Invoice[]
+  rolePermissions RolePermission[]
+  eventLogs       EventLog[]
+  notifications   Notification[]
+
+  @@map("tenants")
+}
+
+model User {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  email       String    @unique
+  password    String
+  firstName   String    @map("first_name")
+  lastName    String    @map("last_name")
+  role        Role
+  phone       String?
+  isActive    Boolean   @default(true) @map("is_active")
+  lastLoginAt DateTime? @map("last_login_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  // Relations
+  tenant               Tenant          @relation(fields: [tenantId], references: [id])
+  auditLogs            AuditLog[]
+  patientsRegistered   Patient[]       @relation("RegisteredBy")
+  visitsCreated        Visit[]         @relation("CreatedBy")
+  resultsEntered       Result[]        @relation("EnteredBy")
+  resultsVerified      Result[]        @relation("VerifiedBy")
+  samplesCollected     Sample[]        @relation("CollectedBy")
+  reportsApproved      Report[]        @relation("ApprovedBy")
+  refreshTokens        RefreshToken[]
+  notifications        Notification[]
+
+  @@index([tenantId])
+  @@map("users")
+}
+
+model Patient {
+  id                     String    @id @default(uuid()) @db.Uuid
+  tenantId               String    @map("tenant_id") @db.Uuid
+  mrn                    String    @unique // Medical Record Number
+  firstName              String    @map("first_name")
+  lastName               String    @map("last_name")
+  dateOfBirth            DateTime  @map("date_of_birth")
+  gender                 Gender
+  phone                  String
+  email                  String?
+  address                String?
+  city                   String?
+  state                  String?
+  pincode                String?
+  bloodGroup             String?   @map("blood_group")
+  emergencyContactName   String?   @map("emergency_contact_name")
+  emergencyContactPhone  String?   @map("emergency_contact_phone")
+  registeredById         String    @map("registered_by_id") @db.Uuid
+  createdAt              DateTime  @default(now()) @map("created_at")
+  updatedAt              DateTime  @updatedAt @map("updated_at")
+  deletedAt              DateTime? @map("deleted_at")
+
+  // Relations
+  tenant       Tenant  @relation(fields: [tenantId], references: [id])
+  registeredBy User    @relation("RegisteredBy", fields: [registeredById], references: [id])
+  visits       Visit[]
+
+  @@index([tenantId])
+  @@index([registeredById])
+  @@index([mrn])
+  @@map("patients")
+}
+
+model Visit {
+  id          String      @id @default(uuid()) @db.Uuid
+  tenantId    String      @map("tenant_id") @db.Uuid
+  visitNumber String      @unique @map("visit_number")
+  patientId   String      @map("patient_id") @db.Uuid
+  status      VisitStatus @default(REGISTERED)
+  notes       String?
+  createdById String      @map("created_by_id") @db.Uuid
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  deletedAt   DateTime?   @map("deleted_at")
+
+  // Relations
+  tenant     Tenant       @relation(fields: [tenantId], references: [id])
+  patient    Patient      @relation(fields: [patientId], references: [id])
+  createdBy  User         @relation("CreatedBy", fields: [createdById], references: [id])
+  testOrders TestOrder[]
+  invoice    Invoice?
+  report     Report?
+
+  @@index([tenantId])
+  @@index([patientId])
+  @@index([createdById])
+  @@index([visitNumber])
+  @@map("visits")
+}
+
+model Test {
+  id              String       @id @default(uuid()) @db.Uuid
+  tenantId        String       @map("tenant_id") @db.Uuid
+  code            String       @unique
+  name            String
+  description     String?
+  category        TestCategory
+  sampleType      SampleType   @map("sample_type")
+  price           Decimal      @db.Decimal(10, 2)
+  turnaroundTime  String       @map("turnaround_time")
+  isActive        Boolean      @default(true) @map("is_active")
+  department      String?
+  instructions    String?
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  deletedAt       DateTime?    @map("deleted_at")
+
+  // Relations
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  testOrders TestOrder[]
+
+  @@index([tenantId])
+  @@index([code])
+  @@index([category])
+  @@map("tests")
+}
+
+model TestOrder {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  visitId   String    @map("visit_id") @db.Uuid
+  testId    String    @map("test_id") @db.Uuid
+  priority  String    @default("NORMAL")
+  notes     String?
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  // Relations
+  tenant Tenant  @relation(fields: [tenantId], references: [id])
+  visit  Visit   @relation(fields: [visitId], references: [id])
+  test   Test    @relation(fields: [testId], references: [id])
+  sample Sample?
+  result Result?
+
+  @@index([tenantId])
+  @@index([visitId])
+  @@index([testId])
+  @@map("test_orders")
+}
+
+model Sample {
+  id              String       @id @default(uuid()) @db.Uuid
+  tenantId        String       @map("tenant_id") @db.Uuid
+  testOrderId     String       @unique @map("test_order_id") @db.Uuid
+  barcode         String       @unique
+  sampleType      SampleType   @map("sample_type")
+  status          SampleStatus @default(PENDING_COLLECTION)
+  collectedAt     DateTime?    @map("collected_at")
+  collectedById   String?      @map("collected_by_id") @db.Uuid
+  rejectionReason String?      @map("rejection_reason")
+  notes           String?
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  deletedAt       DateTime?    @map("deleted_at")
+
+  // Relations
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  testOrder   TestOrder @relation(fields: [testOrderId], references: [id])
+  collectedBy User?     @relation("CollectedBy", fields: [collectedById], references: [id])
+
+  @@index([tenantId])
+  @@index([testOrderId])
+  @@index([collectedById])
+  @@index([barcode])
+  @@map("samples")
+}
+
+model Result {
+  id              String       @id @default(uuid()) @db.Uuid
+  tenantId        String       @map("tenant_id") @db.Uuid
+  testOrderId     String       @unique @map("test_order_id") @db.Uuid
+  value           String
+  unit            String?
+  referenceRange  String?      @map("reference_range")
+  isAbnormal      Boolean      @default(false) @map("is_abnormal")
+  remarks         String?
+  status          ResultStatus @default(PENDING)
+  enteredById     String?      @map("entered_by_id") @db.Uuid
+  enteredAt       DateTime?    @map("entered_at")
+  verifiedById    String?      @map("verified_by_id") @db.Uuid
+  verifiedAt      DateTime?    @map("verified_at")
+  rejectionReason String?      @map("rejection_reason")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  deletedAt       DateTime?    @map("deleted_at")
+
+  // Relations
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  testOrder  TestOrder @relation(fields: [testOrderId], references: [id])
+  enteredBy  User?     @relation("EnteredBy", fields: [enteredById], references: [id])
+  verifiedBy User?     @relation("VerifiedBy", fields: [verifiedById], references: [id])
+
+  @@index([tenantId])
+  @@index([testOrderId])
+  @@index([enteredById])
+  @@index([verifiedById])
+  @@map("results")
+}
+
+model Report {
+  id           String       @id @default(uuid()) @db.Uuid
+  tenantId     String       @map("tenant_id") @db.Uuid
+  visitId      String       @unique @map("visit_id") @db.Uuid
+  reportNumber String       @unique @map("report_number")
+  status       ReportStatus @default(PENDING)
+  fileUrl      String?      @map("file_url")
+  generatedAt  DateTime?    @map("generated_at")
+  approvedById String?      @map("approved_by_id") @db.Uuid
+  approvedAt   DateTime?    @map("approved_at")
+  notes        String?
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+  deletedAt    DateTime?    @map("deleted_at")
+
+  // Relations
+  tenant     Tenant @relation(fields: [tenantId], references: [id])
+  visit      Visit  @relation(fields: [visitId], references: [id])
+  approvedBy User?  @relation("ApprovedBy", fields: [approvedById], references: [id])
+
+  @@index([tenantId])
+  @@index([visitId])
+  @@index([approvedById])
+  @@index([reportNumber])
+  @@map("reports")
+}
+
+model Invoice {
+  id             String        @id @default(uuid()) @db.Uuid
+  tenantId       String        @map("tenant_id") @db.Uuid
+  visitId        String        @unique @map("visit_id") @db.Uuid
+  invoiceNumber  String        @unique @map("invoice_number")
+  totalAmount    Decimal       @map("total_amount") @db.Decimal(10, 2)
+  discountAmount Decimal       @default(0) @map("discount_amount") @db.Decimal(10, 2)
+  taxAmount      Decimal       @default(0) @map("tax_amount") @db.Decimal(10, 2)
+  netAmount      Decimal       @map("net_amount") @db.Decimal(10, 2)
+  paidAmount     Decimal       @default(0) @map("paid_amount") @db.Decimal(10, 2)
+  dueAmount      Decimal       @map("due_amount") @db.Decimal(10, 2)
+  status         InvoiceStatus @default(PENDING)
+  paymentMethod  PaymentMethod?@map("payment_method")
+  notes          String?
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  deletedAt      DateTime?     @map("deleted_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  visit  Visit  @relation(fields: [visitId], references: [id])
+
+  @@index([tenantId])
+  @@index([visitId])
+  @@index([invoiceNumber])
+  @@map("invoices")
+}
+
+model AuditLog {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String?   @map("user_id") @db.Uuid
+  action    String
+  entity    String
+  entityId  String    @map("entity_id")
+  oldValue  Json?     @map("old_value")
+  newValue  Json?     @map("new_value")
+  ipAddress String?   @map("ip_address")
+  userAgent String?   @map("user_agent")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash") @db.VarChar(255)
+  deviceInfo String?   @map("device_info") @db.VarChar(500)
+  ipAddress  String?   @map("ip_address") @db.VarChar(45)
+  expiresAt  DateTime  @map("expires_at")
+  revokedAt  DateTime? @map("revoked_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("refresh_tokens")
+}
+
+model Permission {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique @db.VarChar(100)
+  name        String   @db.VarChar(255)
+  module      String   @db.VarChar(100)
+  description String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  // Relations
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String   @id @default(uuid()) @db.Uuid
+  role         String   @db.VarChar(50)
+  permissionId String   @map("permission_id") @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  tenant     Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([role, permissionId, tenantId])
+  @@index([role, tenantId])
+  @@map("role_permissions")
+}
+
+model EventLog {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  eventType   String    @map("event_type") @db.VarChar(100)
+  entity      String    @db.VarChar(100)
+  entityId    String    @map("entity_id") @db.Uuid
+  payload     Json      @default("{}")
+  processed   Boolean   @default(false)
+  processedAt DateTime? @map("processed_at")
+  error       String?
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@index([eventType, createdAt])
+  @@index([entity, entityId])
+  @@index([tenantId])
+  @@map("event_logs")
+}
+
+model Notification {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @map("tenant_id") @db.Uuid
+  userId    String?   @map("user_id") @db.Uuid
+  type      String    @db.VarChar(50) // info, warning, success, urgent
+  title     String    @db.VarChar(255)
+  message   String
+  entity    String?   @db.VarChar(100)
+  entityId  String?   @map("entity_id") @db.Uuid
+  isRead    Boolean   @default(false) @map("is_read")
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user   User?  @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([tenantId])
+  @@map("notifications")
+}

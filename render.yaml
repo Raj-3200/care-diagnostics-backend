@@ -1,0 +1,27 @@
+# Render.com Blueprint — one-click backend deploy
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: care-diagnostics-api
+    runtime: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npx prisma migrate deploy && npm start
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false # set manually in Render dashboard
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: JWT_ACCESS_EXPIRY
+        value: 15m
+      - key: JWT_REFRESH_EXPIRY
+        value: 7d
+      - key: CORS_ORIGIN
+        sync: false # set to your Vercel frontend URL
+      - key: ANTHROPIC_API_KEY
+        sync: false # optional
