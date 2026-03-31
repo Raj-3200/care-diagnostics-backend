@@ -2,17 +2,22 @@ import { prisma } from '../../config/database.js';
 import { Gender, Patient, Prisma } from '@prisma/client';
 import { PaginationParams } from '../../shared/types/common.types.js';
 
+const patientIncludes = {
+  registeredBy: { select: { id: true, firstName: true, lastName: true } },
+  referredByClient: { select: { id: true, firstName: true, lastName: true, email: true } },
+};
+
 export const findByMRN = async (mrn: string): Promise<Patient | null> => {
   return prisma.patient.findUnique({
     where: { mrn, deletedAt: null },
-    include: { registeredBy: { select: { id: true, firstName: true, lastName: true } } },
+    include: patientIncludes,
   });
 };
 
 export const findById = async (id: string): Promise<Patient | null> => {
   return prisma.patient.findUnique({
     where: { id, deletedAt: null },
-    include: { registeredBy: { select: { id: true, firstName: true, lastName: true } } },
+    include: patientIncludes,
   });
 };
 
@@ -42,7 +47,7 @@ export const findAll = async (
       skip,
       take: limit,
       orderBy: { createdAt: 'desc' },
-      include: { registeredBy: { select: { id: true, firstName: true, lastName: true } } },
+      include: patientIncludes,
     }),
     prisma.patient.count({ where: whereClause }),
   ]);
@@ -67,10 +72,11 @@ export const create = async (data: {
   emergencyContactName?: string | null;
   emergencyContactPhone?: string | null;
   registeredById: string;
+  referredByClientId?: string | null;
 }): Promise<Patient> => {
   return prisma.patient.create({
     data,
-    include: { registeredBy: { select: { id: true, firstName: true, lastName: true } } },
+    include: patientIncludes,
   });
 };
 
@@ -95,7 +101,7 @@ export const update = async (
   return prisma.patient.update({
     where: { id, deletedAt: null },
     data,
-    include: { registeredBy: { select: { id: true, firstName: true, lastName: true } } },
+    include: patientIncludes,
   });
 };
 

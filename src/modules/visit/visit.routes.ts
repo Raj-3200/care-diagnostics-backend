@@ -13,11 +13,11 @@ router.use(authenticate);
 
 /**
  * POST /api/v1/visits
- * Create a new visit - requires Admin or Receptionist
+ * Create a new visit - requires Admin, Receptionist, or Client
  */
 router.post(
   '/',
-  authorize(Role.ADMIN, Role.RECEPTIONIST),
+  authorize(Role.ADMIN, Role.RECEPTIONIST, Role.CLIENT),
   validate(createVisitSchema),
   (req, res, next) => void visitController.createVisit(req, res, next),
 );
@@ -26,25 +26,24 @@ router.post(
  * GET /api/v1/visits?status=...&patientId=...&page=1&limit=30
  * Get all visits - all staff can access
  */
-router.get(
-  '/',
-  (req, res, next) => void visitController.getAllVisits(req, res, next),
-);
+router.get('/', (req, res, next) => void visitController.getAllVisits(req, res, next));
 
 /**
  * GET /api/v1/visits/number/:visitNumber
  * Get visit by visit number - useful for lab workflows
  */
-router.get('/number/:visitNumber', (req, res, next) =>
-  void visitController.getVisitByNumber(req, res, next),
+router.get(
+  '/number/:visitNumber',
+  (req, res, next) => void visitController.getVisitByNumber(req, res, next),
 );
 
 /**
  * GET /api/v1/visits/patient/:patientId?page=1&limit=30
  * Get all visits for a patient
  */
-router.get('/patient/:patientId', (req, res, next) =>
-  void visitController.getPatientVisits(req, res, next),
+router.get(
+  '/patient/:patientId',
+  (req, res, next) => void visitController.getPatientVisits(req, res, next),
 );
 
 /**

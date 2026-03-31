@@ -22,7 +22,7 @@ router.use(authenticate);
  */
 router.post(
   '/',
-  authorize(Role.ADMIN, Role.RECEPTIONIST, Role.LAB_TECHNICIAN),
+  authorize(Role.ADMIN, Role.RECEPTIONIST, Role.LAB_TECHNICIAN, Role.CLIENT),
   validate(createTestOrderSchema),
   (req, res, next) => void testOrderController.createTestOrder(req, res, next),
 );
@@ -33,7 +33,7 @@ router.post(
  */
 router.post(
   '/bulk',
-  authorize(Role.ADMIN, Role.RECEPTIONIST),
+  authorize(Role.ADMIN, Role.RECEPTIONIST, Role.CLIENT),
   validate(bulkCreateByIdsSchema),
   (req, res, next) => void testOrderController.bulkCreateByIds(req, res, next),
 );
@@ -63,8 +63,9 @@ router.get(
  * GET /api/v1/test-orders/visit/:visitId
  * Get all test orders for a visit
  */
-router.get('/visit/:visitId', (req, res, next) =>
-  void testOrderController.getVisitTestOrders(req, res, next),
+router.get(
+  '/visit/:visitId',
+  (req, res, next) => void testOrderController.getVisitTestOrders(req, res, next),
 );
 
 /**

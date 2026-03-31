@@ -18,6 +18,7 @@ enum Role {
   LAB_TECHNICIAN
   PATHOLOGIST
   PATIENT
+  CLIENT
 }
 
 enum Gender {
@@ -145,6 +146,7 @@ model User {
   tenant               Tenant          @relation(fields: [tenantId], references: [id])
   auditLogs            AuditLog[]
   patientsRegistered   Patient[]       @relation("RegisteredBy")
+  patientsReferred     Patient[]       @relation("ReferredByClient")
   visitsCreated        Visit[]         @relation("CreatedBy")
   resultsEntered       Result[]        @relation("EnteredBy")
   resultsVerified      Result[]        @relation("VerifiedBy")
@@ -152,6 +154,8 @@ model User {
   reportsApproved      Report[]        @relation("ApprovedBy")
   refreshTokens        RefreshToken[]
   notifications        Notification[]
+  clientReports        ClientReport[]
+  uploadedReports      ClientReport[]  @relation("UploadedBy")
 
   @@index([tenantId])
   @@map("users")
@@ -175,17 +179,21 @@ model Patient {
   emergencyContactName   String?   @map("emergency_contact_name")
   emergencyContactPhone  String?   @map("emergency_contact_phone")
   registeredById         String    @map("registered_by_id") @db.Uuid
+  referredByClientId     String?   @map("referred_by_client_id") @db.Uuid
   createdAt              DateTime  @default(now()) @map("created_at")
   updatedAt              DateTime  @updatedAt @map("updated_at")
   deletedAt              DateTime? @map("deleted_at")
 
   // Relations
-  tenant       Tenant  @relation(fields: [tenantId], references: [id])
-  registeredBy User    @relation("RegisteredBy", fields: [registeredById], references: [id])
-  visits       Visit[]
+  tenant            Tenant          @relation(fields: [tenantId], references: [id])
+  registeredBy      User            @relation("RegisteredBy", fields: [registeredById], references: [id])
+  referredByClient  User?           @relation("ReferredByClient", fields: [referredByClientId], references: [id])
+  visits            Visit[]
+  clientReports     ClientReport[]
 
   @@index([tenantId])
   @@index([registeredById])
+  @@index([referredByClientId])
   @@index([mrn])
   @@map("patients")
 }
@@ -492,4 +500,30 @@ model Notification {
   @@index([userId, createdAt])
   @@index([tenantId])
   @@map("notifications")
+}
+
+model ClientReport {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  clientId     String   @map("client_id") @db.Uuid
+  patientId    String?  @map("patient_id") @db.Uuid
+  title        String   @db.VarChar(255)
+  description  String?
+  fileUrl      String   @map("file_url")
+  fileName     String   @map("file_name") @db.VarChar(255)
+  fileSize     Int      @map("file_size")
+  uploadedById String   @map("uploaded_by_id") @db.Uuid
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  deletedAt    DateTime? @map("deleted_at")
+
+  // Relations
+  client     User     @relation(fields: [clientId], references: [id])
+  patient    Patient? @relation(fields: [patientId], references: [id])
+  uploadedBy User     @relation("UploadedBy", fields: [uploadedById], references: [id])
+
+  @@index([clientId])
+  @@index([patientId])
+  @@index([tenantId])
+  @@map("client_reports")
 }

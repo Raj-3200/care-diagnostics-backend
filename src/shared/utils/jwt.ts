@@ -54,7 +54,7 @@ export const verifyRefreshToken = (token: string): TokenPayload => {
 export const ACCESS_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: env.NODE_ENV === 'production',
-  sameSite: env.NODE_ENV === 'production' ? ('strict' as const) : ('lax' as const),
+  sameSite: env.NODE_ENV === 'production' ? ('none' as const) : ('lax' as const),
   path: '/',
   maxAge: 15 * 60 * 1000, // 15 minutes
 };
@@ -62,7 +62,7 @@ export const ACCESS_COOKIE_OPTIONS = {
 export const REFRESH_COOKIE_OPTIONS = {
   httpOnly: true,
   secure: env.NODE_ENV === 'production',
-  sameSite: env.NODE_ENV === 'production' ? ('strict' as const) : ('lax' as const),
+  sameSite: env.NODE_ENV === 'production' ? ('none' as const) : ('lax' as const),
   path: '/api/v1/auth',
   maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
 };

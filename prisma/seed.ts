@@ -76,6 +76,192 @@ async function main() {
   });
   console.log('✅ Pathologist user:', pathologist.email);
 
+  const clientPassword = await bcrypt.hash('Client@123456', 12);
+
+  // ==================== CLIENTS ====================
+  const clientsData = [
+    {
+      email: 'apollo@carediagnostics.com',
+      firstName: 'Apollo',
+      lastName: 'Hospitals',
+      phone: '9800000001',
+    },
+    {
+      email: 'maxhealth@carediagnostics.com',
+      firstName: 'Max',
+      lastName: 'Healthcare',
+      phone: '9800000002',
+    },
+    {
+      email: 'fortis@carediagnostics.com',
+      firstName: 'Fortis',
+      lastName: 'Diagnostics',
+      phone: '9800000003',
+    },
+    {
+      email: 'medanta@carediagnostics.com',
+      firstName: 'Medanta',
+      lastName: 'Labs',
+      phone: '9800000004',
+    },
+    {
+      email: 'narayana@carediagnostics.com',
+      firstName: 'Narayana',
+      lastName: 'Health',
+      phone: '9800000005',
+    },
+  ];
+
+  const clients: (typeof admin)[] = [];
+  for (const c of clientsData) {
+    const cl = await prisma.user.upsert({
+      where: { email: c.email },
+      update: {},
+      create: {
+        ...c,
+        password: clientPassword,
+        role: Role.CLIENT,
+        isActive: true,
+        tenantId: DEFAULT_TENANT_ID,
+      },
+    });
+    clients.push(cl);
+    console.log(`✅ Client user: ${cl.email}`);
+  }
+
+  // ==================== PATIENTS REFERRED BY CLIENTS ====================
+  const patientsByClient: {
+    clientIdx: number;
+    firstName: string;
+    lastName: string;
+    phone: string;
+    gender: 'MALE' | 'FEMALE';
+    dob: string;
+  }[] = [
+    // Apollo patients
+    {
+      clientIdx: 0,
+      firstName: 'Rajesh',
+      lastName: 'Kumar',
+      phone: '9900000001',
+      gender: 'MALE',
+      dob: '1985-06-15',
+    },
+    {
+      clientIdx: 0,
+      firstName: 'Sunita',
+      lastName: 'Devi',
+      phone: '9900000002',
+      gender: 'FEMALE',
+      dob: '1990-03-22',
+    },
+    {
+      clientIdx: 0,
+      firstName: 'Amit',
+      lastName: 'Patel',
+      phone: '9900000003',
+      gender: 'MALE',
+      dob: '1978-11-08',
+    },
+    // Max Healthcare patients
+    {
+      clientIdx: 1,
+      firstName: 'Priya',
+      lastName: 'Singh',
+      phone: '9900000004',
+      gender: 'FEMALE',
+      dob: '1995-01-10',
+    },
+    {
+      clientIdx: 1,
+      firstName: 'Vikram',
+      lastName: 'Mehta',
+      phone: '9900000005',
+      gender: 'MALE',
+      dob: '1982-07-25',
+    },
+    // Fortis patients
+    {
+      clientIdx: 2,
+      firstName: 'Anita',
+      lastName: 'Gupta',
+      phone: '9900000006',
+      gender: 'FEMALE',
+      dob: '1988-12-30',
+    },
+    {
+      clientIdx: 2,
+      firstName: 'Rahul',
+      lastName: 'Joshi',
+      phone: '9900000007',
+      gender: 'MALE',
+      dob: '1975-09-14',
+    },
+    {
+      clientIdx: 2,
+      firstName: 'Meena',
+      lastName: 'Rao',
+      phone: '9900000008',
+      gender: 'FEMALE',
+      dob: '1992-04-05',
+    },
+    // Medanta patients
+    {
+      clientIdx: 3,
+      firstName: 'Suresh',
+      lastName: 'Reddy',
+      phone: '9900000009',
+      gender: 'MALE',
+      dob: '1980-02-18',
+    },
+    {
+      clientIdx: 3,
+      firstName: 'Kavita',
+      lastName: 'Nair',
+      phone: '9900000010',
+      gender: 'FEMALE',
+      dob: '1997-08-12',
+    },
+    // Narayana patients
+    {
+      clientIdx: 4,
+      firstName: 'Deepak',
+      lastName: 'Sharma',
+      phone: '9900000011',
+      gender: 'MALE',
+      dob: '1983-05-20',
+    },
+    {
+      clientIdx: 4,
+      firstName: 'Rekha',
+      lastName: 'Mishra',
+      phone: '9900000012',
+      gender: 'FEMALE',
+      dob: '1991-10-03',
+    },
+  ];
+
+  let mrnCounter = 1;
+  for (const p of patientsByClient) {
+    const mrn = `MRN-SEED-${String(mrnCounter++).padStart(4, '0')}`;
+    await prisma.patient.upsert({
+      where: { mrn },
+      update: {},
+      create: {
+        tenantId: DEFAULT_TENANT_ID,
+        mrn,
+        firstName: p.firstName,
+        lastName: p.lastName,
+        dateOfBirth: new Date(p.dob),
+        gender: p.gender,
+        phone: p.phone,
+        registeredById: admin.id,
+        referredByClientId: clients[p.clientIdx].id,
+      },
+    });
+  }
+  console.log(`✅ Seeded ${patientsByClient.length} patients across ${clientsData.length} clients`);
+
   // ==================== TEST CATALOG ====================
 
   const tests = [
@@ -463,6 +649,11 @@ async function main() {
   console.log('   Receptionist: receptionist@carediagnostics.com / Staff@123456');
   console.log('   Lab Tech:     labtech@carediagnostics.com / Staff@123456');
   console.log('   Pathologist:  pathologist@carediagnostics.com / Staff@123456');
+  console.log('   Clients:      apollo@carediagnostics.com / Client@123456');
+  console.log('                 maxhealth@carediagnostics.com / Client@123456');
+  console.log('                 fortis@carediagnostics.com / Client@123456');
+  console.log('                 medanta@carediagnostics.com / Client@123456');
+  console.log('                 narayana@carediagnostics.com / Client@123456');
 }
 
 main()

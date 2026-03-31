@@ -55,6 +55,7 @@ export const registerPatient = async (data: CreatePatientInput, registeredByUser
     bloodGroup: data.bloodGroup || null,
     emergencyContactName: data.emergencyContactName || null,
     emergencyContactPhone: data.emergencyContactPhone || null,
+    referredByClientId: data.referredByClientId || null,
   });
 
   // Create audit log

@@ -150,6 +150,7 @@ export const bulkCreateTestOrders = async (
         },
         {
           isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          timeout: 15000,
         },
       );
     } catch (error) {

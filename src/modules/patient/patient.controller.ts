@@ -29,6 +29,11 @@ export const registerPatient = async (
       throw new Error('User not authenticated');
     }
 
+    // If a CLIENT registers a patient, auto-link to that client
+    if (req.user.role === 'CLIENT') {
+      body.referredByClientId = req.user.userId;
+    }
+
     const patient = await patientService.registerPatient(body, req.user.userId);
     sendSuccess(res, patient, StatusCodes.CREATED);
   } catch (error) {

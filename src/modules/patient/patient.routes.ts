@@ -17,11 +17,11 @@ router.use(authenticate);
 
 /**
  * POST /api/v1/patients
- * Register new patient - requires Admin or Receptionist
+ * Register new patient - requires Admin, Receptionist, or Client
  */
 router.post(
   '/',
-  authorize(Role.ADMIN, Role.RECEPTIONIST),
+  authorize(Role.ADMIN, Role.RECEPTIONIST, Role.CLIENT),
   validate(createPatientSchema),
   (req, res, next) => void patientController.registerPatient(req, res, next),
 );
@@ -40,9 +40,7 @@ router.get(
  * GET /api/v1/patients/mrn/:mrn
  * Get patient by MRN - useful for lab workflows
  */
-router.get('/mrn/:mrn', (req, res, next) =>
-  void patientController.getPatientByMRN(req, res, next),
-);
+router.get('/mrn/:mrn', (req, res, next) => void patientController.getPatientByMRN(req, res, next));
 
 /**
  * GET /api/v1/patients/:id

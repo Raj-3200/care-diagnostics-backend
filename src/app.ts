@@ -19,6 +19,7 @@ import invoiceRoutes from './modules/invoice/invoice.routes.js';
 import healthRoutes from './modules/health/health.routes.js';
 import aiRoutes from './modules/ai/ai.routes.js';
 import notificationRoutes from './modules/notification/notification.routes.js';
+import clientRoutes from './modules/client/client.routes.js';
 import { NotFoundError } from './shared/errors/AppError.js';
 import { setupSwagger } from './config/swagger.js';
 
@@ -76,6 +77,10 @@ app.use('/api/v1/reports', reportRoutes);
 app.use('/api/v1/invoices', invoiceRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
+app.use('/api/v1/clients', clientRoutes);
+
+// Serve uploaded files
+app.use('/uploads', express.static('uploads'));
 
 // 404 handler
 app.use((req: Request, _res: Response) => {
