@@ -6,10 +6,17 @@ import { useAuthStore } from './auth-store';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
-const WS_URL = (process.env.NEXT_PUBLIC_WS_URL || apiUrl)
-  .replace(/^http/, 'ws')
-  .replace(/\/api\/v1\/?$/, '');
+function normalizeWebSocketUrl() {
+  const explicitUrl = process.env.NEXT_PUBLIC_WS_URL?.trim();
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL?.trim();
+  const sourceUrl = explicitUrl || apiUrl;
+
+  if (!sourceUrl || sourceUrl.startsWith('/')) return '';
+
+  return sourceUrl.replace(/^http/, 'ws').replace(/\/api\/v1\/?$/, '');
+}
+
+const WS_URL = normalizeWebSocketUrl();
 
 let socket: Socket | null = null;
 
@@ -82,6 +89,8 @@ export function useWebSocket() {
 
     // Connect with credentials (cookies are sent) — delay slightly to not block initial render
     const timer = setTimeout(() => {
+      if (!WS_URL) return;
+
       const s = io(WS_URL, {
         withCredentials: true,
         transports: ['websocket', 'polling'],

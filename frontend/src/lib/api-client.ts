@@ -1,6 +1,16 @@
 import axios from 'axios';
 
-export const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || '').replace(/\/$/, '');
+function normalizeApiBaseUrl(value: string | undefined) {
+  const trimmed = value?.trim().replace(/\/$/, '');
+
+  if (!trimmed) return '/api/v1';
+  if (trimmed.endsWith('/api/v1')) return trimmed;
+  if (trimmed.endsWith('/api')) return `${trimmed}/v1`;
+
+  return `${trimmed}/api/v1`;
+}
+
+export const API_BASE_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL);
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,

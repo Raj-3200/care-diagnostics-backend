@@ -15,7 +15,13 @@ export function getErrorMessage(error: unknown): string {
       if (response.error?.message) return response.error.message;
     }
 
-    if (typeof data === 'string' && data.trim()) return data;
+    if (typeof data === 'string' && data.trim()) {
+      if (data.trimStart().startsWith('<')) {
+        if (status === 404) return 'API route not found. Please check the backend URL configuration.';
+        return 'The server returned an unexpected HTML response.';
+      }
+      return data;
+    }
     if (status === 429) return 'Too many requests. Please wait a few minutes and try again.';
 
     return error.message;
