@@ -8,7 +8,10 @@ import type { ApiResponse, TestOrder } from '@/types';
 import { PageHeader } from '@/components/shared/page-header';
 import { DataTable, Column } from '@/components/shared/data-table';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { downloadCsv } from '@/lib/csv';
 import { format } from 'date-fns';
+import { Download } from 'lucide-react';
 import { PageTransition } from '@/components/shared/page-transition';
 
 export default function TestOrdersPage() {
@@ -70,9 +73,34 @@ export default function TestOrdersPage() {
     },
   ];
 
+  const exportOrders = () => {
+    const rows = (data?.data ?? []).map((order) => ({
+      Visit: order.visit?.visitNumber ?? '',
+      Patient: order.visit?.patient
+        ? `${order.visit.patient.firstName} ${order.visit.patient.lastName}`
+        : '',
+      Test: order.test?.name ?? '',
+      Code: order.test?.code ?? '',
+      Priority: order.priority,
+      Ordered: format(new Date(order.createdAt), 'yyyy-MM-dd HH:mm'),
+    }));
+    downloadCsv(`test-orders-page-${page}.csv`, rows);
+  };
+
   return (
     <PageTransition>
-      <PageHeader title="Test Orders" description="View and manage all test orders" />
+      <PageHeader title="Test Orders" description="View and manage all test orders">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={exportOrders}
+          disabled={(data?.data.length ?? 0) === 0}
+          className="h-9 gap-2 rounded-lg border-border/50 text-[13px]"
+        >
+          <Download className="h-4 w-4" />
+          Export CSV
+        </Button>
+      </PageHeader>
       <DataTable
         columns={columns}
         data={data?.data ?? []}

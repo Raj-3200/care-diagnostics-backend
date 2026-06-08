@@ -1,15 +1,23 @@
 import * as reportRepository from './report.repository.js';
-import * as visitRepository from '../visit/visit.repository.js';
 import { prisma } from '../../config/database.js';
 import { CONSTANTS } from '../../config/constants.js';
-import { NotFoundError, ConflictError, ValidationError } from '../../shared/errors/AppError.js';
-import { ReportStatus, ResultStatus } from '@prisma/client';
+import { NotFoundError, ValidationError } from '../../shared/errors/AppError.js';
+import { ReportStatus, ResultStatus, SampleStatus } from '@prisma/client';
 import { createStateMachine, REPORT_WORKFLOW, ReportState } from '../../core/state-machine.js';
 import { eventBus, EVENTS } from '../../core/event-bus.js';
 import { createAuditLog } from '../../shared/utils/audit.js';
 import { env } from '../../config/env.js';
 
 const reportMachine = createStateMachine<ReportState>(REPORT_WORKFLOW);
+
+type ReportWithRelations = NonNullable<Awaited<ReturnType<typeof reportRepository.findById>>>;
+
+type ReportableVisit = {
+  testOrders: Array<{
+    sample: { status: SampleStatus } | null;
+    result: { status: ResultStatus; value: string | null } | null;
+  }>;
+};
 
 // Auto-generate report number: CD-RPT-YYYYMMDD-XXXX
 const generateReportNumber = async (): Promise<string> => {
@@ -35,12 +43,91 @@ const generateReportNumber = async (): Promise<string> => {
   return `${prefix}-${sequence.toString().padStart(4, '0')}`;
 };
 
+const getVisitForReport = async (visitId: string) => {
+  return prisma.visit.findFirst({
+    where: { id: visitId, deletedAt: null },
+    include: {
+      testOrders: {
+        where: { deletedAt: null },
+        include: {
+          sample: true,
+          result: true,
+        },
+      },
+    },
+  });
+};
+
+const getReportBlockReason = (visit: ReportableVisit): string | null => {
+  const testOrders = visit.testOrders ?? [];
+  const total = testOrders.length;
+
+  if (total === 0) {
+    return 'order at least one test before reporting.';
+  }
+
+  const rejectedSamples = testOrders.filter((order) => order.sample?.status === SampleStatus.REJECTED);
+  if (rejectedSamples.length > 0) {
+    return `resolve ${rejectedSamples.length} rejected sample(s) before reporting.`;
+  }
+
+  const collectedSamples = testOrders.filter(
+    (order) => order.sample && order.sample.status !== SampleStatus.PENDING_COLLECTION,
+  );
+  if (collectedSamples.length < total) {
+    return `collect all samples first (${collectedSamples.length}/${total} collected).`;
+  }
+
+  const processedSamples = testOrders.filter(
+    (order) => order.sample?.status === SampleStatus.PROCESSED,
+  );
+  if (processedSamples.length < total) {
+    return `receive and process all samples first (${processedSamples.length}/${total} processed).`;
+  }
+
+  const rejectedResults = testOrders.filter((order) => order.result?.status === ResultStatus.REJECTED);
+  if (rejectedResults.length > 0) {
+    return `resolve ${rejectedResults.length} rejected result(s) before reporting.`;
+  }
+
+  const enteredResults = testOrders.filter(
+    (order) => order.result && order.result.status !== ResultStatus.PENDING && order.result.value?.trim(),
+  );
+  if (enteredResults.length < total) {
+    return `enter results for all tests first (${enteredResults.length}/${total} entered).`;
+  }
+
+  const verifiedResults = testOrders.filter(
+    (order) => order.result?.status === ResultStatus.VERIFIED && order.result.value?.trim(),
+  );
+  if (verifiedResults.length < total) {
+    return `verify all entered results first (${verifiedResults.length}/${total} verified).`;
+  }
+
+  return null;
+};
+
+const ensureVisitReadyForReport = (visit: ReportableVisit, action: string) => {
+  const blockReason = getReportBlockReason(visit);
+  if (blockReason) {
+    throw new ValidationError(`Cannot ${action}: ${blockReason}`);
+  }
+};
+
+export const ensureReportDownloadable = (report: ReportWithRelations) => {
+  if (report.status !== ReportStatus.APPROVED && report.status !== ReportStatus.DISPATCHED) {
+    throw new ValidationError('Cannot download report: approve the generated report first.');
+  }
+
+  ensureVisitReadyForReport(report.visit, 'download report');
+};
+
 /**
  * Create a new report for a visit
  */
 export const createReport = async (visitId: string, notes: string | undefined, userId: string) => {
   // Validate visit exists
-  const visit = await visitRepository.findById(visitId);
+  const visit = await getVisitForReport(visitId);
   if (!visit) {
     throw new NotFoundError('Visit not found');
   }
@@ -48,8 +135,11 @@ export const createReport = async (visitId: string, notes: string | undefined, u
   // Check if report already exists for this visit
   const existingReport = await reportRepository.findByVisitId(visitId);
   if (existingReport) {
-    throw new ConflictError('Report already exists for this visit');
+    ensureVisitReadyForReport(existingReport.visit, 'open report');
+    return existingReport;
   }
+
+  ensureVisitReadyForReport(visit, 'create report');
 
   const reportNumber = await generateReportNumber();
 
@@ -131,6 +221,8 @@ export const generateReport = async (
     throw new NotFoundError('Report not found');
   }
 
+  ensureVisitReadyForReport(report.visit, 'generate report');
+
   // Use state machine
   await reportMachine.transition(report.status as ReportState, 'GENERATED', {
     entityId: id,
@@ -138,27 +230,6 @@ export const generateReport = async (
     role: 'LAB_TECHNICIAN',
     tenantId: env.DEFAULT_TENANT_ID,
   });
-
-  // Ensure test orders with results all have them verified
-  const testOrders = report.visit.testOrders;
-  const ordersWithResults = testOrders.filter(
-    (to): to is typeof to & { result: NonNullable<typeof to.result> } => to.result !== null,
-  );
-  const unverifiedResults = ordersWithResults.filter(
-    (to) => to.result.status !== ResultStatus.VERIFIED,
-  );
-
-  if (ordersWithResults.length === 0) {
-    throw new ValidationError(
-      'Cannot generate report: no test orders have results yet. Process samples and enter results first.',
-    );
-  }
-
-  if (unverifiedResults.length > 0) {
-    throw new ValidationError(
-      `Cannot generate report: ${unverifiedResults.length} result(s) are not yet verified.`,
-    );
-  }
 
   return prisma.$transaction(async (tx) => {
     const updated = await tx.report.update({
@@ -208,6 +279,8 @@ export const approveReport = async (id: string, notes: string | undefined, userI
   if (!report) {
     throw new NotFoundError('Report not found');
   }
+
+  ensureVisitReadyForReport(report.visit, 'approve report');
 
   // Use state machine
   await reportMachine.transition(report.status as ReportState, 'APPROVED', {
@@ -264,6 +337,8 @@ export const dispatchReport = async (id: string, notes: string | undefined, user
   if (!report) {
     throw new NotFoundError('Report not found');
   }
+
+  ensureVisitReadyForReport(report.visit, 'dispatch report');
 
   // Use state machine
   await reportMachine.transition(report.status as ReportState, 'DISPATCHED', {

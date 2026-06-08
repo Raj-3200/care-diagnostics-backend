@@ -32,17 +32,13 @@ export const login = async (
   ipAddress?: string,
   userAgent?: string,
 ): Promise<LoginResponse> => {
-  // Find user by email
-  const user = await prisma.user.findUnique({
-    where: { email },
+  // Find only active users and keep failures generic.
+  const user = await prisma.user.findFirst({
+    where: { email, isActive: true, deletedAt: null },
   });
 
-  if (!user || user.deletedAt) {
+  if (!user) {
     throw new UnauthorizedError('Invalid email or password');
-  }
-
-  if (!user.isActive) {
-    throw new UnauthorizedError('Account is inactive');
   }
 
   // Compare password

@@ -1,664 +1,493 @@
-import { PrismaClient, Role, TestCategory, SampleType } from '@prisma/client';
+import {
+  PrismaClient,
+  Gender,
+  InvoiceStatus,
+  PaymentMethod,
+  PlanTier,
+  ReportStatus,
+  ResultStatus,
+  Role,
+  SampleStatus,
+  SampleType,
+  TestCategory,
+  VisitStatus,
+} from '@prisma/client';
 import bcrypt from 'bcrypt';
 
 const prisma = new PrismaClient();
 
-async function main() {
-  console.log('🌱 Starting database seeding...');
+const TENANT_ID = '00000000-0000-0000-0000-000000000001';
+const DEMO_PASSWORD = 'Admin@1234';
 
-  const hashedPassword = await bcrypt.hash('Admin@123456', 12);
-  const staffPassword = await bcrypt.hash('Staff@123456', 12);
-
-  const DEFAULT_TENANT_ID = '00000000-0000-0000-0000-000000000001';
-
-  // ==================== USERS ====================
-
-  const admin = await prisma.user.upsert({
-    where: { email: 'admin@carediagnostics.com' },
-    update: {},
+async function upsertUser(data: {
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: Role;
+  phone?: string;
+}) {
+  const password = await bcrypt.hash(DEMO_PASSWORD, 12);
+  return prisma.user.upsert({
+    where: { email: data.email },
+    update: {
+      firstName: data.firstName,
+      lastName: data.lastName,
+      role: data.role,
+      phone: data.phone,
+      isActive: true,
+      tenantId: TENANT_ID,
+    },
     create: {
+      ...data,
+      tenantId: TENANT_ID,
+      password,
+      isActive: true,
+    },
+  });
+}
+
+async function upsertVisit(data: {
+  visitNumber: string;
+  patientId: string;
+  createdById: string;
+  status: VisitStatus;
+  notes?: string;
+}) {
+  return prisma.visit.upsert({
+    where: { visitNumber: data.visitNumber },
+    update: {
+      patientId: data.patientId,
+      createdById: data.createdById,
+      status: data.status,
+      notes: data.notes,
+      tenantId: TENANT_ID,
+    },
+    create: {
+      ...data,
+      tenantId: TENANT_ID,
+    },
+  });
+}
+
+async function upsertOrder(visitId: string, testId: string, notes?: string) {
+  const existing = await prisma.testOrder.findFirst({
+    where: { visitId, testId, deletedAt: null },
+  });
+  if (existing) return existing;
+
+  return prisma.testOrder.create({
+    data: {
+      tenantId: TENANT_ID,
+      visitId,
+      testId,
+      priority: 'NORMAL',
+      notes,
+    },
+  });
+}
+
+async function main() {
+  const lab = await prisma.tenant.upsert({
+    where: { slug: 'care-diagnostics' },
+    update: {
+      name: 'Care Diagnostics',
+      address: '14 MG Road, Bengaluru, Karnataka',
+      phone: '+91 98765 43210',
       email: 'admin@carediagnostics.com',
-      password: hashedPassword,
+      logoUrl: '/logo.png',
+      planTier: PlanTier.PRO,
+      isActive: true,
+      settings: {
+        reportPrefix: 'RPT',
+        invoicePrefix: 'INV',
+        planTier: 'PRO',
+      },
+    },
+    create: {
+      id: TENANT_ID,
+      name: 'Care Diagnostics',
+      slug: 'care-diagnostics',
+      address: '14 MG Road, Bengaluru, Karnataka',
+      phone: '+91 98765 43210',
+      email: 'admin@carediagnostics.com',
+      logoUrl: '/logo.png',
+      planTier: PlanTier.PRO,
+      settings: {
+        reportPrefix: 'RPT',
+        invoicePrefix: 'INV',
+        planTier: 'PRO',
+      },
+      isActive: true,
+    },
+  });
+
+  const [admin, receptionist, technician, pathologist] = await Promise.all([
+    upsertUser({
+      email: 'admin@carediagnostics.com',
       firstName: 'System',
       lastName: 'Admin',
       role: Role.ADMIN,
-      isActive: true,
-      tenantId: DEFAULT_TENANT_ID,
-    },
-  });
-  console.log('✅ Admin user:', admin.email);
-
-  const receptionist = await prisma.user.upsert({
-    where: { email: 'receptionist@carediagnostics.com' },
-    update: {},
-    create: {
-      email: 'receptionist@carediagnostics.com',
-      password: staffPassword,
+      phone: '9876543200',
+    }),
+    upsertUser({
+      email: 'reception@carediagnostics.com',
       firstName: 'Priya',
       lastName: 'Sharma',
       role: Role.RECEPTIONIST,
-      phone: '9876543210',
-      isActive: true,
-      tenantId: DEFAULT_TENANT_ID,
-    },
-  });
-  console.log('✅ Receptionist user:', receptionist.email);
-
-  const labTech = await prisma.user.upsert({
-    where: { email: 'labtech@carediagnostics.com' },
-    update: {},
-    create: {
-      email: 'labtech@carediagnostics.com',
-      password: staffPassword,
+      phone: '9876543201',
+    }),
+    upsertUser({
+      email: 'tech@carediagnostics.com',
       firstName: 'Rahul',
       lastName: 'Verma',
       role: Role.LAB_TECHNICIAN,
-      phone: '9876543211',
-      isActive: true,
-      tenantId: DEFAULT_TENANT_ID,
-    },
-  });
-  console.log('✅ Lab Technician user:', labTech.email);
-
-  const pathologist = await prisma.user.upsert({
-    where: { email: 'pathologist@carediagnostics.com' },
-    update: {},
-    create: {
-      email: 'pathologist@carediagnostics.com',
-      password: staffPassword,
+      phone: '9876543202',
+    }),
+    upsertUser({
+      email: 'doctor@carediagnostics.com',
       firstName: 'Dr. Anjali',
       lastName: 'Gupta',
       role: Role.PATHOLOGIST,
-      phone: '9876543212',
-      isActive: true,
-      tenantId: DEFAULT_TENANT_ID,
-    },
-  });
-  console.log('✅ Pathologist user:', pathologist.email);
+      phone: '9876543203',
+    }),
+  ]);
 
-  const clientPassword = await bcrypt.hash('Client@123456', 12);
+  const patientsData = [
+    ['CD-2026-00001', 'Aarav', 'Mehta', '1990-04-12', Gender.MALE, '9876543210'],
+    ['CD-2026-00002', 'Isha', 'Nair', '1986-09-23', Gender.FEMALE, '9876543211'],
+    ['CD-2026-00003', 'Kabir', 'Rao', '1978-02-03', Gender.MALE, '9876543212'],
+    ['CD-2026-00004', 'Meera', 'Kapoor', '1995-12-18', Gender.FEMALE, '9876543213'],
+    ['CD-2026-00005', 'Rohan', 'Das', '2001-06-30', Gender.MALE, '9876543214'],
+  ] as const;
 
-  // ==================== CLIENTS ====================
-  const clientsData = [
-    {
-      email: 'apollo@carediagnostics.com',
-      firstName: 'Apollo',
-      lastName: 'Hospitals',
-      phone: '9800000001',
-    },
-    {
-      email: 'maxhealth@carediagnostics.com',
-      firstName: 'Max',
-      lastName: 'Healthcare',
-      phone: '9800000002',
-    },
-    {
-      email: 'fortis@carediagnostics.com',
-      firstName: 'Fortis',
-      lastName: 'Diagnostics',
-      phone: '9800000003',
-    },
-    {
-      email: 'medanta@carediagnostics.com',
-      firstName: 'Medanta',
-      lastName: 'Labs',
-      phone: '9800000004',
-    },
-    {
-      email: 'narayana@carediagnostics.com',
-      firstName: 'Narayana',
-      lastName: 'Health',
-      phone: '9800000005',
-    },
-  ];
+  const patients = await Promise.all(
+    patientsData.map(([mrn, firstName, lastName, dob, gender, phone]) =>
+      prisma.patient.upsert({
+        where: { mrn },
+        update: {
+          firstName,
+          lastName,
+          dateOfBirth: new Date(dob),
+          gender,
+          phone,
+          tenantId: TENANT_ID,
+          registeredById: receptionist.id,
+        },
+        create: {
+          tenantId: TENANT_ID,
+          mrn,
+          firstName,
+          lastName,
+          dateOfBirth: new Date(dob),
+          gender,
+          phone,
+          email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}@example.com`,
+          address: 'Bengaluru, Karnataka',
+          bloodGroup: 'O+',
+          registeredById: receptionist.id,
+        },
+      }),
+    ),
+  );
 
-  const clients: (typeof admin)[] = [];
-  for (const c of clientsData) {
-    const cl = await prisma.user.upsert({
-      where: { email: c.email },
-      update: {},
-      create: {
-        ...c,
-        password: clientPassword,
-        role: Role.CLIENT,
-        isActive: true,
-        tenantId: DEFAULT_TENANT_ID,
+  const testsData = [
+    ['CBC', 'Complete Blood Count', TestCategory.HEMATOLOGY, SampleType.BLOOD, '350', '24 hours'],
+    ['LFT', 'Liver Function Test', TestCategory.BIOCHEMISTRY, SampleType.BLOOD, '700', '24 hours'],
+    ['KFT', 'Kidney Function Test', TestCategory.BIOCHEMISTRY, SampleType.BLOOD, '650', '24 hours'],
+    ['HBA1C', 'HbA1c', TestCategory.BIOCHEMISTRY, SampleType.BLOOD, '500', '24 hours'],
+    ['TSH', 'Thyroid Stimulating Hormone', TestCategory.IMMUNOLOGY, SampleType.BLOOD, '450', '24 hours'],
+    ['URM', 'Urine Routine Microscopy', TestCategory.PATHOLOGY, SampleType.URINE, '250', '12 hours'],
+    ['BGRP', 'Blood Group', TestCategory.HEMATOLOGY, SampleType.BLOOD, '200', '6 hours'],
+    ['LIPID', 'Lipid Profile', TestCategory.BIOCHEMISTRY, SampleType.BLOOD, '800', '24 hours'],
+    ['CRP', 'C-Reactive Protein', TestCategory.IMMUNOLOGY, SampleType.BLOOD, '600', '24 hours'],
+    ['WIDAL', 'Widal Test', TestCategory.MICROBIOLOGY, SampleType.BLOOD, '450', '24 hours'],
+  ] as const;
+
+  const tests = await Promise.all(
+    testsData.map(([code, name, category, sampleType, price, turnaroundTime]) =>
+      prisma.test.upsert({
+        where: { code },
+        update: {
+          name,
+          category,
+          sampleType,
+          price,
+          turnaroundTime,
+          isActive: true,
+          tenantId: TENANT_ID,
+        },
+        create: {
+          tenantId: TENANT_ID,
+          code,
+          name,
+          category,
+          sampleType,
+          price,
+          turnaroundTime,
+          isActive: true,
+          department: category,
+          description: `${name} diagnostic test`,
+        },
+      }),
+    ),
+  );
+
+  const visits = await Promise.all([
+    upsertVisit({
+      visitNumber: 'CD-VIS-20260608-0001',
+      patientId: patients[0].id,
+      createdById: receptionist.id,
+      status: VisitStatus.COMPLETED,
+      notes: 'Routine annual checkup',
+    }),
+    upsertVisit({
+      visitNumber: 'CD-VIS-20260608-0002',
+      patientId: patients[1].id,
+      createdById: receptionist.id,
+      status: VisitStatus.IN_PROGRESS,
+      notes: 'Fever evaluation',
+    }),
+    upsertVisit({
+      visitNumber: 'CD-VIS-20260608-0003',
+      patientId: patients[2].id,
+      createdById: receptionist.id,
+      status: VisitStatus.SAMPLES_COLLECTED,
+      notes: 'Diabetes follow-up',
+    }),
+  ]);
+
+  const orders = await Promise.all([
+    upsertOrder(visits[0].id, tests[0].id, 'CBC ordered'),
+    upsertOrder(visits[1].id, tests[8].id, 'CRP ordered'),
+    upsertOrder(visits[2].id, tests[3].id, 'HbA1c ordered'),
+  ]);
+
+  const samples = await Promise.all(
+    orders.map((order, index) =>
+      prisma.sample.upsert({
+        where: { testOrderId: order.id },
+        update: {
+          status: index === 2 ? SampleStatus.COLLECTED : SampleStatus.PROCESSED,
+          collectedAt: new Date(),
+          collectedById: technician.id,
+          tenantId: TENANT_ID,
+        },
+        create: {
+          tenantId: TENANT_ID,
+          testOrderId: order.id,
+          barcode: `SMP-20260608-${String(index + 1).padStart(4, '0')}`,
+          sampleType: tests[index === 1 ? 8 : index === 2 ? 3 : 0].sampleType,
+          status: index === 2 ? SampleStatus.COLLECTED : SampleStatus.PROCESSED,
+          collectedAt: new Date(),
+          collectedById: technician.id,
+        },
+      }),
+    ),
+  );
+
+  await Promise.all([
+    prisma.result.upsert({
+      where: { testOrderId: orders[0].id },
+      update: {
+        value: '13.6',
+        unit: 'g/dL',
+        referenceRange: '12-16',
+        isAbnormal: false,
+        status: ResultStatus.VERIFIED,
+        enteredById: technician.id,
+        enteredAt: new Date(),
+        verifiedById: pathologist.id,
+        verifiedAt: new Date(),
+        tenantId: TENANT_ID,
       },
-    });
-    clients.push(cl);
-    console.log(`✅ Client user: ${cl.email}`);
-  }
-
-  // ==================== PATIENTS REFERRED BY CLIENTS ====================
-  const patientsByClient: {
-    clientIdx: number;
-    firstName: string;
-    lastName: string;
-    phone: string;
-    gender: 'MALE' | 'FEMALE';
-    dob: string;
-  }[] = [
-    // Apollo patients
-    {
-      clientIdx: 0,
-      firstName: 'Rajesh',
-      lastName: 'Kumar',
-      phone: '9900000001',
-      gender: 'MALE',
-      dob: '1985-06-15',
-    },
-    {
-      clientIdx: 0,
-      firstName: 'Sunita',
-      lastName: 'Devi',
-      phone: '9900000002',
-      gender: 'FEMALE',
-      dob: '1990-03-22',
-    },
-    {
-      clientIdx: 0,
-      firstName: 'Amit',
-      lastName: 'Patel',
-      phone: '9900000003',
-      gender: 'MALE',
-      dob: '1978-11-08',
-    },
-    // Max Healthcare patients
-    {
-      clientIdx: 1,
-      firstName: 'Priya',
-      lastName: 'Singh',
-      phone: '9900000004',
-      gender: 'FEMALE',
-      dob: '1995-01-10',
-    },
-    {
-      clientIdx: 1,
-      firstName: 'Vikram',
-      lastName: 'Mehta',
-      phone: '9900000005',
-      gender: 'MALE',
-      dob: '1982-07-25',
-    },
-    // Fortis patients
-    {
-      clientIdx: 2,
-      firstName: 'Anita',
-      lastName: 'Gupta',
-      phone: '9900000006',
-      gender: 'FEMALE',
-      dob: '1988-12-30',
-    },
-    {
-      clientIdx: 2,
-      firstName: 'Rahul',
-      lastName: 'Joshi',
-      phone: '9900000007',
-      gender: 'MALE',
-      dob: '1975-09-14',
-    },
-    {
-      clientIdx: 2,
-      firstName: 'Meena',
-      lastName: 'Rao',
-      phone: '9900000008',
-      gender: 'FEMALE',
-      dob: '1992-04-05',
-    },
-    // Medanta patients
-    {
-      clientIdx: 3,
-      firstName: 'Suresh',
-      lastName: 'Reddy',
-      phone: '9900000009',
-      gender: 'MALE',
-      dob: '1980-02-18',
-    },
-    {
-      clientIdx: 3,
-      firstName: 'Kavita',
-      lastName: 'Nair',
-      phone: '9900000010',
-      gender: 'FEMALE',
-      dob: '1997-08-12',
-    },
-    // Narayana patients
-    {
-      clientIdx: 4,
-      firstName: 'Deepak',
-      lastName: 'Sharma',
-      phone: '9900000011',
-      gender: 'MALE',
-      dob: '1983-05-20',
-    },
-    {
-      clientIdx: 4,
-      firstName: 'Rekha',
-      lastName: 'Mishra',
-      phone: '9900000012',
-      gender: 'FEMALE',
-      dob: '1991-10-03',
-    },
-  ];
-
-  let mrnCounter = 1;
-  for (const p of patientsByClient) {
-    const mrn = `MRN-SEED-${String(mrnCounter++).padStart(4, '0')}`;
-    await prisma.patient.upsert({
-      where: { mrn },
-      update: {},
       create: {
-        tenantId: DEFAULT_TENANT_ID,
-        mrn,
-        firstName: p.firstName,
-        lastName: p.lastName,
-        dateOfBirth: new Date(p.dob),
-        gender: p.gender,
-        phone: p.phone,
-        registeredById: admin.id,
-        referredByClientId: clients[p.clientIdx].id,
+        tenantId: TENANT_ID,
+        testOrderId: orders[0].id,
+        value: '13.6',
+        unit: 'g/dL',
+        referenceRange: '12-16',
+        isAbnormal: false,
+        status: ResultStatus.VERIFIED,
+        enteredById: technician.id,
+        enteredAt: new Date(),
+        verifiedById: pathologist.id,
+        verifiedAt: new Date(),
       },
-    });
-  }
-  console.log(`✅ Seeded ${patientsByClient.length} patients across ${clientsData.length} clients`);
-
-  // ==================== TEST CATALOG ====================
-
-  const tests = [
-    // Hematology
-    {
-      code: 'CBC',
-      name: 'Complete Blood Count',
-      description:
-        'Measures red blood cells, white blood cells, hemoglobin, hematocrit, and platelets',
-      category: TestCategory.HEMATOLOGY,
-      sampleType: SampleType.BLOOD,
-      price: 350,
-      turnaroundTime: '4 hours',
-      department: 'Hematology',
-      instructions: 'No fasting required',
-    },
-    {
-      code: 'ESR',
-      name: 'Erythrocyte Sedimentation Rate',
-      description: 'Measures the rate at which red blood cells settle',
-      category: TestCategory.HEMATOLOGY,
-      sampleType: SampleType.BLOOD,
-      price: 150,
-      turnaroundTime: '2 hours',
-      department: 'Hematology',
-      instructions: 'No fasting required',
-    },
-    {
-      code: 'PT-INR',
-      name: 'Prothrombin Time with INR',
-      description: 'Measures blood clotting time',
-      category: TestCategory.HEMATOLOGY,
-      sampleType: SampleType.BLOOD,
-      price: 400,
-      turnaroundTime: '4 hours',
-      department: 'Hematology',
-      instructions: 'Inform about anticoagulant medications',
-    },
-    {
-      code: 'PBS',
-      name: 'Peripheral Blood Smear',
-      description: 'Microscopic examination of blood cells',
-      category: TestCategory.HEMATOLOGY,
-      sampleType: SampleType.BLOOD,
-      price: 250,
-      turnaroundTime: '6 hours',
-      department: 'Hematology',
-    },
-
-    // Biochemistry
-    {
-      code: 'FBS',
-      name: 'Fasting Blood Sugar',
-      description: 'Measures blood glucose after 8-12 hours of fasting',
-      category: TestCategory.BIOCHEMISTRY,
-      sampleType: SampleType.BLOOD,
-      price: 100,
-      turnaroundTime: '2 hours',
-      department: 'Biochemistry',
-      instructions: 'Requires 8-12 hours fasting',
-    },
-    {
-      code: 'PPBS',
-      name: 'Post Prandial Blood Sugar',
-      description: 'Blood sugar 2 hours after meal',
-      category: TestCategory.BIOCHEMISTRY,
-      sampleType: SampleType.BLOOD,
-      price: 100,
-      turnaroundTime: '2 hours',
-      department: 'Biochemistry',
-      instructions: 'Collect 2 hours after meal',
-    },
-    {
-      code: 'HBA1C',
-      name: 'Glycosylated Hemoglobin',
-      description: 'Average blood sugar over 2-3 months',
-      category: TestCategory.BIOCHEMISTRY,
-      sampleType: SampleType.BLOOD,
-      price: 500,
-      turnaroundTime: '4 hours',
-      department: 'Biochemistry',
-      instructions: 'No fasting required',
-    },
-    {
-      code: 'LFT',
-      name: 'Liver Function Test',
-      description: 'Panel including bilirubin, ALT, AST, ALP, total protein, albumin',
-      category: TestCategory.BIOCHEMISTRY,
-      sampleType: SampleType.BLOOD,
-      price: 600,
-      turnaroundTime: '6 hours',
-      department: 'Biochemistry',
-      instructions: '10-12 hours fasting recommended',
-    },
-    {
-      code: 'KFT',
-      name: 'Kidney Function Test',
-      description: 'Panel including urea, creatinine, uric acid, BUN',
-      category: TestCategory.BIOCHEMISTRY,
-      sampleType: SampleType.BLOOD,
-      price: 500,
-      turnaroundTime: '6 hours',
-      department: 'Biochemistry',
-      instructions: '10-12 hours fasting recommended',
-    },
-    {
-      code: 'LIPID',
-      name: 'Lipid Profile',
-      description: 'Total cholesterol, HDL, LDL, triglycerides, VLDL',
-      category: TestCategory.BIOCHEMISTRY,
-      sampleType: SampleType.BLOOD,
-      price: 550,
-      turnaroundTime: '6 hours',
-      department: 'Biochemistry',
-      instructions: '12 hours fasting required',
-    },
-    {
-      code: 'TFT',
-      name: 'Thyroid Function Test',
-      description: 'TSH, T3, T4 levels',
-      category: TestCategory.BIOCHEMISTRY,
-      sampleType: SampleType.BLOOD,
-      price: 700,
-      turnaroundTime: '8 hours',
-      department: 'Biochemistry',
-      instructions: 'Early morning sample preferred',
-    },
-    {
-      code: 'ELECTRO',
-      name: 'Serum Electrolytes',
-      description: 'Sodium, potassium, chloride, bicarbonate',
-      category: TestCategory.BIOCHEMISTRY,
-      sampleType: SampleType.BLOOD,
-      price: 400,
-      turnaroundTime: '4 hours',
-      department: 'Biochemistry',
-    },
-    {
-      code: 'VITD',
-      name: 'Vitamin D (25-Hydroxy)',
-      description: 'Measures 25-hydroxyvitamin D level',
-      category: TestCategory.BIOCHEMISTRY,
-      sampleType: SampleType.BLOOD,
-      price: 1200,
-      turnaroundTime: '24 hours',
-      department: 'Biochemistry',
-    },
-    {
-      code: 'VITB12',
-      name: 'Vitamin B12',
-      description: 'Measures cobalamin level',
-      category: TestCategory.BIOCHEMISTRY,
-      sampleType: SampleType.BLOOD,
-      price: 800,
-      turnaroundTime: '24 hours',
-      department: 'Biochemistry',
-    },
-    {
-      code: 'IRON',
-      name: 'Iron Studies',
-      description: 'Serum iron, TIBC, ferritin',
-      category: TestCategory.BIOCHEMISTRY,
-      sampleType: SampleType.BLOOD,
-      price: 750,
-      turnaroundTime: '8 hours',
-      department: 'Biochemistry',
-      instructions: 'Morning sample, 12 hours fasting',
-    },
-
-    // Microbiology
-    {
-      code: 'URINE-RE',
-      name: 'Urine Routine & Microscopy',
-      description: 'Physical, chemical, and microscopic examination of urine',
-      category: TestCategory.MICROBIOLOGY,
-      sampleType: SampleType.URINE,
-      price: 150,
-      turnaroundTime: '2 hours',
-      department: 'Microbiology',
-      instructions: 'Midstream clean-catch sample',
-    },
-    {
-      code: 'URINE-CS',
-      name: 'Urine Culture & Sensitivity',
-      description: 'Bacterial culture with antibiotic sensitivity',
-      category: TestCategory.MICROBIOLOGY,
-      sampleType: SampleType.URINE,
-      price: 500,
-      turnaroundTime: '48 hours',
-      department: 'Microbiology',
-      instructions: 'Midstream clean-catch, before antibiotics',
-    },
-    {
-      code: 'BLOOD-CS',
-      name: 'Blood Culture & Sensitivity',
-      description: 'Detects bacteria in blood',
-      category: TestCategory.MICROBIOLOGY,
-      sampleType: SampleType.BLOOD,
-      price: 800,
-      turnaroundTime: '72 hours',
-      department: 'Microbiology',
-      instructions: 'Collect during fever spike if possible',
-    },
-    {
-      code: 'STOOL-RE',
-      name: 'Stool Routine & Microscopy',
-      description: 'Physical and microscopic examination of stool',
-      category: TestCategory.MICROBIOLOGY,
-      sampleType: SampleType.STOOL,
-      price: 200,
-      turnaroundTime: '4 hours',
-      department: 'Microbiology',
-      instructions: 'Fresh sample required',
-    },
-    {
-      code: 'THROAT-CS',
-      name: 'Throat Swab Culture',
-      description: 'Bacterial culture from throat swab',
-      category: TestCategory.MICROBIOLOGY,
-      sampleType: SampleType.SWAB,
-      price: 450,
-      turnaroundTime: '48 hours',
-      department: 'Microbiology',
-    },
-
-    // Immunology
-    {
-      code: 'CRP',
-      name: 'C-Reactive Protein',
-      description: 'Marker of inflammation',
-      category: TestCategory.IMMUNOLOGY,
-      sampleType: SampleType.BLOOD,
-      price: 400,
-      turnaroundTime: '4 hours',
-      department: 'Immunology',
-    },
-    {
-      code: 'RF',
-      name: 'Rheumatoid Factor',
-      description: 'Autoantibody associated with rheumatoid arthritis',
-      category: TestCategory.IMMUNOLOGY,
-      sampleType: SampleType.BLOOD,
-      price: 350,
-      turnaroundTime: '6 hours',
-      department: 'Immunology',
-    },
-    {
-      code: 'ANA',
-      name: 'Anti-Nuclear Antibody',
-      description: 'Screening test for autoimmune disorders',
-      category: TestCategory.IMMUNOLOGY,
-      sampleType: SampleType.BLOOD,
-      price: 900,
-      turnaroundTime: '24 hours',
-      department: 'Immunology',
-    },
-    {
-      code: 'HIV',
-      name: 'HIV 1 & 2 Antibody',
-      description: 'Screening test for HIV infection',
-      category: TestCategory.IMMUNOLOGY,
-      sampleType: SampleType.BLOOD,
-      price: 350,
-      turnaroundTime: '4 hours',
-      department: 'Immunology',
-      instructions: 'Pre-test counselling required',
-    },
-    {
-      code: 'HBSAG',
-      name: 'Hepatitis B Surface Antigen',
-      description: 'Screening for hepatitis B infection',
-      category: TestCategory.IMMUNOLOGY,
-      sampleType: SampleType.BLOOD,
-      price: 300,
-      turnaroundTime: '4 hours',
-      department: 'Immunology',
-    },
-    {
-      code: 'WIDAL',
-      name: 'Widal Test',
-      description: 'Serological test for typhoid fever',
-      category: TestCategory.IMMUNOLOGY,
-      sampleType: SampleType.BLOOD,
-      price: 250,
-      turnaroundTime: '4 hours',
-      department: 'Immunology',
-    },
-
-    // Pathology
-    {
-      code: 'BIOPSY',
-      name: 'Tissue Biopsy',
-      description: 'Histopathological examination of tissue',
-      category: TestCategory.PATHOLOGY,
-      sampleType: SampleType.TISSUE,
-      price: 2000,
-      turnaroundTime: '5 days',
-      department: 'Pathology',
-      instructions: 'Specimen in formalin',
-    },
-    {
-      code: 'FNAC',
-      name: 'Fine Needle Aspiration Cytology',
-      description: 'Cytological examination of aspirated cells',
-      category: TestCategory.PATHOLOGY,
-      sampleType: SampleType.TISSUE,
-      price: 1500,
-      turnaroundTime: '3 days',
-      department: 'Pathology',
-    },
-    {
-      code: 'PAP',
-      name: 'Pap Smear',
-      description: 'Cervical cancer screening',
-      category: TestCategory.PATHOLOGY,
-      sampleType: SampleType.SWAB,
-      price: 500,
-      turnaroundTime: '3 days',
-      department: 'Pathology',
-    },
-
-    // Molecular
-    {
-      code: 'COVID-RT',
-      name: 'COVID-19 RT-PCR',
-      description: 'SARS-CoV-2 detection by RT-PCR',
-      category: TestCategory.MOLECULAR,
-      sampleType: SampleType.SWAB,
-      price: 500,
-      turnaroundTime: '24 hours',
-      department: 'Molecular Biology',
-      instructions: 'Nasopharyngeal swab',
-    },
-    {
-      code: 'DENGUE-NS1',
-      name: 'Dengue NS1 Antigen',
-      description: 'Early detection of dengue infection',
-      category: TestCategory.MOLECULAR,
-      sampleType: SampleType.BLOOD,
-      price: 600,
-      turnaroundTime: '4 hours',
-      department: 'Molecular Biology',
-    },
-  ];
-
-  for (const test of tests) {
-    await prisma.test.upsert({
-      where: { code: test.code },
-      update: {},
+    }),
+    prisma.result.upsert({
+      where: { testOrderId: orders[1].id },
+      update: {
+        value: '98',
+        unit: 'mg/L',
+        referenceRange: '<10',
+        isAbnormal: true,
+        status: ResultStatus.VERIFIED,
+        remarks: 'CRITICAL: urgent clinical attention required',
+        enteredById: technician.id,
+        enteredAt: new Date(),
+        verifiedById: pathologist.id,
+        verifiedAt: new Date(),
+        tenantId: TENANT_ID,
+      },
       create: {
-        code: test.code,
-        name: test.name,
-        description: test.description,
-        category: test.category,
-        sampleType: test.sampleType,
-        price: test.price,
-        turnaroundTime: test.turnaroundTime,
-        department: test.department ?? null,
-        instructions: test.instructions ?? null,
-        tenantId: DEFAULT_TENANT_ID,
+        tenantId: TENANT_ID,
+        testOrderId: orders[1].id,
+        value: '98',
+        unit: 'mg/L',
+        referenceRange: '<10',
+        isAbnormal: true,
+        status: ResultStatus.VERIFIED,
+        remarks: 'CRITICAL: urgent clinical attention required',
+        enteredById: technician.id,
+        enteredAt: new Date(),
+        verifiedById: pathologist.id,
+        verifiedAt: new Date(),
       },
-    });
-  }
-  console.log(`✅ Seeded ${tests.length} tests in test catalog`);
+    }),
+    prisma.result.upsert({
+      where: { testOrderId: orders[2].id },
+      update: {
+        value: '7.8',
+        unit: '%',
+        referenceRange: '<5.7',
+        isAbnormal: true,
+        status: ResultStatus.ENTERED,
+        enteredById: technician.id,
+        enteredAt: new Date(),
+        tenantId: TENANT_ID,
+      },
+      create: {
+        tenantId: TENANT_ID,
+        testOrderId: orders[2].id,
+        value: '7.8',
+        unit: '%',
+        referenceRange: '<5.7',
+        isAbnormal: true,
+        status: ResultStatus.ENTERED,
+        enteredById: technician.id,
+        enteredAt: new Date(),
+      },
+    }),
+  ]);
 
-  // ==================== AUDIT LOG ====================
+  await Promise.all([
+    prisma.report.upsert({
+      where: { visitId: visits[0].id },
+      update: {
+        reportNumber: 'RPT-2026-00001',
+        status: ReportStatus.DISPATCHED,
+        generatedAt: new Date(),
+        approvedById: pathologist.id,
+        approvedAt: new Date(),
+        tenantId: TENANT_ID,
+      },
+      create: {
+        tenantId: TENANT_ID,
+        visitId: visits[0].id,
+        reportNumber: 'RPT-2026-00001',
+        status: ReportStatus.DISPATCHED,
+        generatedAt: new Date(),
+        approvedById: pathologist.id,
+        approvedAt: new Date(),
+      },
+    }),
+    prisma.report.upsert({
+      where: { visitId: visits[1].id },
+      update: {
+        reportNumber: 'RPT-2026-00002',
+        status: ReportStatus.PENDING,
+        tenantId: TENANT_ID,
+      },
+      create: {
+        tenantId: TENANT_ID,
+        visitId: visits[1].id,
+        reportNumber: 'RPT-2026-00002',
+        status: ReportStatus.PENDING,
+      },
+    }),
+  ]);
+
+  await Promise.all([
+    prisma.invoice.upsert({
+      where: { visitId: visits[0].id },
+      update: {
+        invoiceNumber: 'INV-2026-00001',
+        totalAmount: '350',
+        discountAmount: '0',
+        taxAmount: '0',
+        netAmount: '350',
+        paidAmount: '350',
+        dueAmount: '0',
+        status: InvoiceStatus.PAID,
+        paymentMethod: PaymentMethod.UPI,
+        tenantId: TENANT_ID,
+      },
+      create: {
+        tenantId: TENANT_ID,
+        visitId: visits[0].id,
+        invoiceNumber: 'INV-2026-00001',
+        totalAmount: '350',
+        discountAmount: '0',
+        taxAmount: '0',
+        netAmount: '350',
+        paidAmount: '350',
+        dueAmount: '0',
+        status: InvoiceStatus.PAID,
+        paymentMethod: PaymentMethod.UPI,
+      },
+    }),
+    prisma.invoice.upsert({
+      where: { visitId: visits[1].id },
+      update: {
+        invoiceNumber: 'INV-2026-00002',
+        totalAmount: '600',
+        discountAmount: '0',
+        taxAmount: '0',
+        netAmount: '600',
+        paidAmount: '0',
+        dueAmount: '600',
+        status: InvoiceStatus.PENDING,
+        tenantId: TENANT_ID,
+      },
+      create: {
+        tenantId: TENANT_ID,
+        visitId: visits[1].id,
+        invoiceNumber: 'INV-2026-00002',
+        totalAmount: '600',
+        discountAmount: '0',
+        taxAmount: '0',
+        netAmount: '600',
+        paidAmount: '0',
+        dueAmount: '600',
+        status: InvoiceStatus.PENDING,
+      },
+    }),
+  ]);
+
   await prisma.auditLog.create({
     data: {
       userId: admin.id,
-      action: 'DATABASE_SEEDED',
-      entity: 'System',
-      entityId: 'seed',
+      action: 'SEED_COMPLETED',
+      entity: 'Tenant',
+      entityId: lab.id,
       newValue: {
-        users: 4,
+        patients: patients.length,
         tests: tests.length,
-        timestamp: new Date().toISOString(),
+        visits: visits.length,
+        samples: samples.length,
       },
     },
   });
 
-  console.log('🌱 Seeding completed successfully!');
-  console.log('');
-  console.log('📋 Default credentials:');
-  console.log('   Admin:        admin@carediagnostics.com / Admin@123456');
-  console.log('   Receptionist: receptionist@carediagnostics.com / Staff@123456');
-  console.log('   Lab Tech:     labtech@carediagnostics.com / Staff@123456');
-  console.log('   Pathologist:  pathologist@carediagnostics.com / Staff@123456');
-  console.log('   Clients:      apollo@carediagnostics.com / Client@123456');
-  console.log('                 maxhealth@carediagnostics.com / Client@123456');
-  console.log('                 fortis@carediagnostics.com / Client@123456');
-  console.log('                 medanta@carediagnostics.com / Client@123456');
-  console.log('                 narayana@carediagnostics.com / Client@123456');
+  console.log('Seed completed.');
+  console.log(`Admin: ${admin.email} / ${DEMO_PASSWORD}`);
+  console.log(`Receptionist: ${receptionist.email} / ${DEMO_PASSWORD}`);
+  console.log(`Technician: ${technician.email} / ${DEMO_PASSWORD}`);
 }
 
 main()
-  .catch((e) => {
-    console.error('❌ Seeding failed:', e);
+  .catch((error) => {
+    console.error(error);
     process.exit(1);
   })
   .finally(async () => {

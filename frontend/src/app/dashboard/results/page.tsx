@@ -1,9 +1,15 @@
 'use client';
 
 import { useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api, { getErrorMessage } from '@/lib/api';
-import type { ApiResponse, Result } from '@/types';
+import { getErrorMessage } from '@/lib/api';
+import type { Result } from '@/types';
+import {
+  enterResult as enterResultRequest,
+  listResults,
+  verifyResult as verifyResultRequest,
+} from '@/services/results';
 import { PageHeader } from '@/components/shared/page-header';
 import { DataTable, Column } from '@/components/shared/data-table';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -34,8 +40,10 @@ import { PageTransition } from '@/components/shared/page-transition';
 import { FadeIn } from '@/components/shared/animations';
 
 export default function ResultsPage() {
+  const searchParams = useSearchParams();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<string>('ALL');
+  const abnormalOnly = searchParams.get('abnormal') === 'true';
   const [entryDialog, setEntryDialog] = useState<{
     open: boolean;
     resultId: string;
@@ -51,18 +59,18 @@ export default function ResultsPage() {
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['results', page, status],
+    queryKey: ['results', page, status, abnormalOnly],
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: '20' });
       if (status && status !== 'ALL') params.set('status', status);
-      const { data } = await api.get<ApiResponse<Result[]>>(`/results?${params}`);
-      return data;
+      if (abnormalOnly) params.set('isAbnormal', 'true');
+      return listResults(params);
     },
   });
 
   const enterResult = useMutation({
     mutationFn: async () => {
-      await api.patch(`/results/${entryDialog.resultId}/enter`, resultForm);
+      await enterResultRequest(entryDialog.resultId, resultForm);
     },
     onSuccess: () => {
       toast.success('Result entered successfully');
@@ -75,7 +83,7 @@ export default function ResultsPage() {
 
   const verifyResult = useMutation({
     mutationFn: async (resultId: string) => {
-      await api.patch(`/results/${resultId}/verify`);
+      await verifyResultRequest(resultId);
     },
     onSuccess: () => {
       toast.success('Result verified');
@@ -200,7 +208,10 @@ export default function ResultsPage() {
 
   return (
     <PageTransition>
-      <PageHeader title="Results" description="Enter and verify diagnostic test results" />
+      <PageHeader
+        title={abnormalOnly ? 'Abnormal Results' : 'Results'}
+        description="Enter and verify diagnostic test results"
+      />
 
       <FadeIn delay={0.05}>
         <div className="mb-5 flex items-center gap-3">

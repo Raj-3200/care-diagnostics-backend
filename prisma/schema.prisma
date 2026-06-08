@@ -96,6 +96,12 @@ enum TestCategory {
   OTHER
 }
 
+enum PlanTier {
+  FREE
+  BASIC
+  PRO
+}
+
 // ==================== MODELS ====================
 
 model Tenant {
@@ -106,6 +112,7 @@ model Tenant {
   phone     String?   @db.VarChar(20)
   email     String?   @db.VarChar(255)
   logoUrl   String?   @map("logo_url")
+  planTier  PlanTier  @default(FREE) @map("plan_tier")
   settings  Json      @default("{}")
   isActive  Boolean   @default(true) @map("is_active")
   createdAt DateTime  @default(now()) @map("created_at")
@@ -193,6 +200,8 @@ model Patient {
   clientReports     ClientReport[]
 
   @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@index([phone])
   @@index([registeredById])
   @@index([referredByClientId])
   @@index([mrn])
@@ -272,6 +281,7 @@ model TestOrder {
   result Result?
 
   @@index([tenantId])
+  @@index([tenantId, createdAt])
   @@index([visitId])
   @@index([testId])
   @@map("test_orders")
@@ -386,6 +396,7 @@ model Invoice {
   visit  Visit  @relation(fields: [visitId], references: [id])
 
   @@index([tenantId])
+  @@index([tenantId, createdAt])
   @@index([visitId])
   @@index([invoiceNumber])
   @@map("invoices")

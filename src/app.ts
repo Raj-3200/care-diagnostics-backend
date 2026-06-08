@@ -3,6 +3,7 @@ import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import rateLimit from 'express-rate-limit';
+import { StatusCodes } from 'http-status-codes';
 import { env } from './config/env.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -20,52 +21,46 @@ import healthRoutes from './modules/health/health.routes.js';
 import aiRoutes from './modules/ai/ai.routes.js';
 import notificationRoutes from './modules/notification/notification.routes.js';
 import clientRoutes from './modules/client/client.routes.js';
+import publicRoutes from './modules/public/public.routes.js';
+import auditRoutes from './modules/audit/audit.routes.js';
+import settingsRoutes from './modules/settings/settings.routes.js';
 import { NotFoundError } from './shared/errors/AppError.js';
+import { sendError } from './shared/utils/apiResponse.js';
 import { setupSwagger } from './config/swagger.js';
 
 const app = express();
-
-const allowedOrigins = env.CORS_ORIGIN.split(',').map((origin) => origin.trim());
-const allowAllOrigins = allowedOrigins.includes('*');
-const localDevOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
 
 // Security middleware
 app.use(helmet());
 
 // CORS
-app.use(
-  cors({
-    origin(origin, callback) {
-      if (
-        allowAllOrigins ||
-        !origin ||
-        allowedOrigins.includes(origin) ||
-        (env.NODE_ENV === 'development' && localDevOrigin.test(origin))
-      ) {
-        callback(null, true);
-        return;
-      }
-
-      callback(new Error(`CORS origin ${origin} is not allowed`));
-    },
-    credentials: true, // Always true for cookie-based auth
-  }),
-);
+app.use(cors({
+  origin: env.CORS_ORIGIN,
+  credentials: true,
+}));
 
 // Cookie parser (before routes, for httpOnly token auth)
 app.use(cookieParser());
 
 // Body parsing middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true, limit: '2mb' }));
 
 // Rate limiting
 const limiter = rateLimit({
   windowMs: env.RATE_LIMIT_WINDOW_MS,
   max: env.RATE_LIMIT_MAX,
-  message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) =>
+    ['GET', 'HEAD', 'OPTIONS'].includes(req.method) || req.path.startsWith('/api/v1/auth'),
+  handler: (_req, res) =>
+    sendError(
+      res,
+      'Too many requests. Please wait a few minutes and try again.',
+      StatusCodes.TOO_MANY_REQUESTS,
+      'RATE_LIMIT_EXCEEDED',
+    ),
 });
 
 app.use(limiter);
@@ -77,7 +72,9 @@ app.use(requestLogger);
 setupSwagger(app);
 
 // API Routes
+app.use('/health', healthRoutes);
 app.use('/api/v1/health', healthRoutes);
+app.use('/api/v1/public', publicRoutes);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/patients', patientRoutes);
@@ -91,6 +88,8 @@ app.use('/api/v1/invoices', invoiceRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/clients', clientRoutes);
+app.use('/api/v1/audit-logs', auditRoutes);
+app.use('/api/v1/settings', settingsRoutes);
 
 // Serve uploaded files
 app.use('/uploads', express.static('uploads'));

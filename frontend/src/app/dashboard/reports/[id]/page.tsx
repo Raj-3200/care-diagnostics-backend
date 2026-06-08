@@ -1,9 +1,16 @@
 'use client';
 
-import { useParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
-import api, { getErrorMessage } from '@/lib/api';
-import type { ApiResponse, Report } from '@/types';
+import { useParams, useRouter } from 'next/navigation';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getErrorMessage } from '@/lib/api';
+import { canDownloadReport, getDiagnosticWorkflow } from '@/lib/workflow';
+import {
+  approveReport as approveReportRequest,
+  dispatchReport as dispatchReportRequest,
+  downloadReportPdf,
+  generateReport as generateReportRequest,
+  getReport,
+} from '@/services/reports';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent } from '@/components/ui/card';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -25,35 +32,71 @@ import {
   AlertTriangle,
   Calendar,
   CheckCircle,
+  FileUp,
+  Send,
+  Loader2,
+  ArrowRight,
 } from 'lucide-react';
 import { PageTransition } from '@/components/shared/page-transition';
 import { FadeIn, StaggerContainer, StaggerItem } from '@/components/shared/animations';
 
 export default function ReportDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const qc = useQueryClient();
 
   const { data: report, isLoading } = useQuery({
     queryKey: ['report', id],
     queryFn: async () => {
-      const { data } = await api.get<ApiResponse<Report>>(`/reports/${id}`);
+      const data = await getReport(id);
       return data.data;
     },
   });
 
+  const generateReport = useMutation({
+    mutationFn: async () => {
+      await generateReportRequest(id);
+    },
+    onSuccess: () => {
+      toast.success('Report generated successfully');
+      qc.invalidateQueries({ queryKey: ['report', id] });
+      qc.invalidateQueries({ queryKey: ['reports'] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const approveReport = useMutation({
+    mutationFn: async () => {
+      await approveReportRequest(id);
+    },
+    onSuccess: () => {
+      toast.success('Report approved');
+      qc.invalidateQueries({ queryKey: ['report', id] });
+      qc.invalidateQueries({ queryKey: ['reports'] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
+  const dispatchReport = useMutation({
+    mutationFn: async () => {
+      await dispatchReportRequest(id);
+    },
+    onSuccess: () => {
+      toast.success('Report dispatched');
+      qc.invalidateQueries({ queryKey: ['report', id] });
+      qc.invalidateQueries({ queryKey: ['reports'] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
+  });
+
   const handleDownloadPDF = async () => {
+    if (!report || !canDownloadReport(report)) {
+      toast.error('Download is available after the report is approved.');
+      return;
+    }
+
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1'}/reports/${id}/download`,
-        {
-          credentials: 'include', // Send httpOnly cookies for auth
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error('Failed to download report');
-      }
-
-      const blob = await response.blob();
+      const blob = await downloadReportPdf(id);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -86,6 +129,8 @@ export default function ReportDetailPage() {
 
   const patient = report.visit?.patient;
   const testOrders = report.visit?.testOrders ?? [];
+  const workflow = getDiagnosticWorkflow(testOrders);
+  const downloadReady = canDownloadReport(report);
 
   return (
     <PageTransition>
@@ -116,10 +161,88 @@ export default function ReportDetailPage() {
               </p>
             </div>
           </div>
-          <Button onClick={handleDownloadPDF} className="rounded-lg shadow-sm">
-            <Download className="mr-1.5 h-4 w-4" />
-            Download PDF
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            {report.status === 'PENDING' && (
+              <Button
+                variant="outline"
+                onClick={() => generateReport.mutate()}
+                disabled={generateReport.isPending || !workflow.reportReady}
+                title={workflow.reportReady ? 'Generate report' : workflow.reason}
+                className="rounded-lg"
+              >
+                {generateReport.isPending ? (
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                ) : (
+                  <FileUp className="mr-1.5 h-4 w-4" />
+                )}
+                Generate
+              </Button>
+            )}
+            {report.status === 'GENERATED' && (
+              <Button
+                variant="outline"
+                onClick={() => approveReport.mutate()}
+                disabled={approveReport.isPending}
+                className="rounded-lg border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+              >
+                {approveReport.isPending ? (
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle className="mr-1.5 h-4 w-4" />
+                )}
+                Approve
+              </Button>
+            )}
+            {report.status === 'APPROVED' && (
+              <Button
+                variant="outline"
+                onClick={() => dispatchReport.mutate()}
+                disabled={dispatchReport.isPending}
+                className="rounded-lg border-violet-200 bg-violet-50 text-violet-700 hover:bg-violet-100"
+              >
+                {dispatchReport.isPending ? (
+                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-1.5 h-4 w-4" />
+                )}
+                Dispatch
+              </Button>
+            )}
+            <Button
+              onClick={handleDownloadPDF}
+              disabled={!downloadReady}
+              title={downloadReady ? 'Download PDF' : 'Download after approval'}
+              className="rounded-lg shadow-sm"
+            >
+              <Download className="mr-1.5 h-4 w-4" />
+              Download PDF
+            </Button>
+          </div>
+        </div>
+      </FadeIn>
+
+      <FadeIn delay={0.05}>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border/40 bg-card p-4 shadow-sm">
+          <div>
+            <p className={`text-[13.5px] font-semibold ${workflow.reportReady ? 'text-emerald-600' : 'text-amber-600'}`}>
+              {workflow.reportReady ? 'All report prerequisites are complete' : workflow.reason}
+            </p>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">
+              {workflow.collected}/{workflow.total} samples collected · {workflow.processed}/
+              {workflow.total} processed · {workflow.verified}/{workflow.total} results verified
+            </p>
+          </div>
+          {!workflow.reportReady && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => router.push(workflow.nextHref)}
+              className="h-8 gap-1.5 rounded-lg border-border/50 text-[12px]"
+            >
+              {workflow.nextLabel}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Button>
+          )}
         </div>
       </FadeIn>
 

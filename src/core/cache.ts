@@ -12,7 +12,7 @@ let redis: Redis | null = null;
 export function initRedis(): Redis | null {
   const redisUrl = env.REDIS_URL;
   if (!redisUrl) {
-    console.log('⚠️  REDIS_URL not set — caching disabled');
+    console.info('⚠️  REDIS_URL not set — caching disabled');
     return null;
   }
 
@@ -23,7 +23,7 @@ export function initRedis(): Redis | null {
       retryStrategy: (times: number) => Math.min(times * 200, 5000),
     });
 
-    redis.on('connect', () => console.log('✅ Redis connected'));
+    redis.on('connect', () => console.info('✅ Redis connected'));
     redis.on('error', (err: Error) => console.error('Redis error:', err.message));
 
     void redis.connect().catch(() => {

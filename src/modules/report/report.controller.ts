@@ -124,6 +124,7 @@ export const deleteReport = async (req: Request, res: Response, next: NextFuncti
 export const downloadReport = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const report = await reportService.getReportById(req.params.id);
+    reportService.ensureReportDownloadable(report);
 
     const visit = report.visit;
     const patient = visit.patient;
@@ -142,6 +143,13 @@ export const downloadReport = async (req: Request, res: Response, next: NextFunc
     }));
 
     const pdfData = {
+      lab: {
+        name: report.tenant.name,
+        address: report.tenant.address,
+        phone: report.tenant.phone,
+        email: report.tenant.email,
+        logoUrl: report.tenant.logoUrl,
+      },
       reportNumber: report.reportNumber,
       status: report.status,
       visitNumber: visit.visitNumber,

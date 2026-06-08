@@ -18,9 +18,9 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
 
-# Build the app (set BACKEND_URL at build time or via runtime env)
-ARG BACKEND_URL=http://backend:4000
-ENV BACKEND_URL=${BACKEND_URL}
+# Build the app with the deployed backend API URL.
+ARG NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 
 RUN npm run build
 
@@ -46,7 +46,6 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget -qO- http://localhost:3000/api/v1/health || exit 1
+HEALTHCHECK NONE
 
 CMD ["node", "server.js"]

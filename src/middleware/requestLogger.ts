@@ -5,7 +5,7 @@ export const requestLogger = (req: Request, res: Response, next: NextFunction): 
 
   res.on('finish', () => {
     const duration = Date.now() - start;
-    console.log({
+    console.info({
       method: req.method,
       url: req.url,
       statusCode: res.statusCode,

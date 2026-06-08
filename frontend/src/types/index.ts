@@ -37,6 +37,7 @@ export type TestCategory =
   | 'RADIOLOGY'
   | 'MOLECULAR'
   | 'OTHER';
+export type PlanTier = 'FREE' | 'BASIC' | 'PRO';
 
 // ==================== API RESPONSE ====================
 
@@ -208,6 +209,39 @@ export interface Invoice {
   paymentMethod?: PaymentMethod;
   notes?: string;
   visit?: Visit;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AuditLog {
+  id: string;
+  userId?: string;
+  action: string;
+  entity: string;
+  entityId: string;
+  oldValue?: unknown;
+  newValue?: unknown;
+  ipAddress?: string;
+  userAgent?: string;
+  createdAt: string;
+  user?: Pick<User, 'id' | 'email' | 'firstName' | 'lastName' | 'role'>;
+}
+
+export interface LabSettings {
+  id: string;
+  name: string;
+  slug: string;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  logoUrl?: string | null;
+  planTier: PlanTier;
+  settings?: {
+    reportPrefix?: string;
+    invoicePrefix?: string;
+    [key: string]: unknown;
+  };
+  isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }

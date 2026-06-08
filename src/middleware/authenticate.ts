@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthenticatedRequest } from '../shared/types/auth.types.js';
 import { UnauthorizedError } from '../shared/errors/AppError.js';
 import { verifyAccessToken } from '../shared/utils/jwt.js';
+import { runWithTenant } from '../shared/utils/tenantContext.js';
 
 export const authenticate = (
   req: AuthenticatedRequest,
@@ -26,7 +27,7 @@ export const authenticate = (
 
     const payload = verifyAccessToken(token);
     req.user = payload;
-    next();
+    runWithTenant(payload.tenantId, next);
   } catch (error) {
     next(error);
   }

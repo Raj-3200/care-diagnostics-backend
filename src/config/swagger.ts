@@ -6,7 +6,6 @@
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
 import { Express } from 'express';
-import { env } from './env.js';
 
 const options: swaggerJsdoc.Options = {
   definition: {
@@ -25,7 +24,7 @@ const options: swaggerJsdoc.Options = {
         '- **PATHOLOGIST** — Result verification, report approval\n',
       contact: { name: 'Care Diagnostics', email: 'admin@carediagnostics.com' },
     },
-    servers: [{ url: `http://localhost:${env.PORT}/api/v1`, description: 'Local Development' }],
+    servers: [{ url: '/api/v1', description: 'API v1' }],
     components: {
       securitySchemes: {
         cookieAuth: {

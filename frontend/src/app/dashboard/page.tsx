@@ -9,7 +9,7 @@ import type { ApiResponse, Visit } from '@/types';
 import {
   Users, ClipboardList, TestTube, FileCheck, Receipt, Activity,
   ArrowRight, Clock, UserPlus, FlaskConical, FileOutput,
-  Pipette, CheckCircle2, TrendingUp, Plus,
+  Pipette, CheckCircle2, Plus, AlertTriangle, X,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageTransition } from '@/components/shared/page-transition';
@@ -19,7 +19,6 @@ import { VISIT_STATUS_LABELS, VISIT_STATUS_COLORS } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { motion } from 'framer-motion';
 
 interface DashboardStats {
   totalPatients: number;
@@ -28,6 +27,7 @@ interface DashboardStats {
   pendingResults: number;
   pendingReports: number;
   pendingInvoices: number;
+  criticalResults: number;
 }
 
 interface PipelineStep {
@@ -45,6 +45,7 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [recentVisits, setRecentVisits] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
+  const [criticalDismissed, setCriticalDismissed] = useState(false);
 
   useEffect(() => {
     if (user?.role === 'CLIENT') router.replace('/dashboard/my-reports');
@@ -53,7 +54,7 @@ export default function DashboardPage() {
   useEffect(() => {
     async function loadStats() {
       try {
-        const [patients, visits, samples, results, reports, invoices, recentVisitsRes] =
+        const [patients, visits, samples, results, reports, invoices, critical, recentVisitsRes] =
           await Promise.allSettled([
             api.get<ApiResponse>('/patients?limit=1'),
             api.get<ApiResponse>('/visits?limit=1'),
@@ -61,6 +62,7 @@ export default function DashboardPage() {
             api.get<ApiResponse>('/results?status=PENDING&limit=1'),
             api.get<ApiResponse>('/reports?status=PENDING&limit=1'),
             api.get<ApiResponse>('/invoices?status=PENDING&limit=1'),
+            api.get<ApiResponse>('/results?isAbnormal=true&limit=1'),
             api.get<ApiResponse<Visit[]>>('/visits?limit=5'),
           ]);
 
@@ -71,6 +73,7 @@ export default function DashboardPage() {
           pendingResults: results.status === 'fulfilled' ? (results.value.data.meta?.total ?? 0) : 0,
           pendingReports: reports.status === 'fulfilled' ? (reports.value.data.meta?.total ?? 0) : 0,
           pendingInvoices: invoices.status === 'fulfilled' ? (invoices.value.data.meta?.total ?? 0) : 0,
+          criticalResults: critical.status === 'fulfilled' ? (critical.value.data.meta?.total ?? 0) : 0,
         });
 
         if (recentVisitsRes.status === 'fulfilled' && recentVisitsRes.value.data.data) {
@@ -86,8 +89,8 @@ export default function DashboardPage() {
   }, []);
 
   const statCards = [
-    { label: 'Total Patients', value: stats?.totalPatients, icon: Users, color: 'text-blue-400', bgColor: 'bg-blue-500/10', href: '/dashboard/patients', trend: '+12%' },
-    { label: 'Total Visits', value: stats?.todayVisits, icon: ClipboardList, color: 'text-emerald-400', bgColor: 'bg-emerald-500/10', href: '/dashboard/visits', trend: '+8%' },
+    { label: 'Total Patients', value: stats?.totalPatients, icon: Users, color: 'text-blue-400', bgColor: 'bg-blue-500/10', href: '/dashboard/patients' },
+    { label: 'Total Visits', value: stats?.todayVisits, icon: ClipboardList, color: 'text-emerald-400', bgColor: 'bg-emerald-500/10', href: '/dashboard/visits' },
     { label: 'Pending Samples', value: stats?.pendingSamples, icon: TestTube, color: 'text-amber-400', bgColor: 'bg-amber-500/10', href: '/dashboard/samples', urgent: true },
     { label: 'Pending Results', value: stats?.pendingResults, icon: FileCheck, color: 'text-violet-400', bgColor: 'bg-violet-500/10', href: '/dashboard/results', urgent: true },
     { label: 'Pending Reports', value: stats?.pendingReports, icon: Activity, color: 'text-orange-400', bgColor: 'bg-orange-500/10', href: '/dashboard/reports' },
@@ -163,6 +166,46 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Stat Cards ── */}
+      {!loading && !criticalDismissed && (stats?.criticalResults ?? 0) > 0 && (
+        <FadeIn delay={0.02}>
+          <div className="mb-6 flex flex-col gap-3 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-destructive sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-destructive/15">
+                <AlertTriangle className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[14px] font-semibold">
+                  {stats?.criticalResults} abnormal result
+                  {stats?.criticalResults === 1 ? '' : 's'} require review
+                </p>
+                <p className="mt-0.5 text-[12px] text-destructive/80">
+                  Open the filtered results queue before publishing reports.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-end sm:self-auto">
+              <Button
+                asChild
+                size="sm"
+                variant="outline"
+                className="h-8 border-destructive/30 bg-background/20 text-[12px] text-destructive hover:bg-destructive/10"
+              >
+                <Link href="/dashboard/results?abnormal=true">Review</Link>
+              </Button>
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                onClick={() => setCriticalDismissed(true)}
+                className="h-8 w-8 text-destructive hover:bg-destructive/10"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </FadeIn>
+      )}
+
       <StaggerContainer className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-6">
         {statCards.map((card) => {
           const Icon = card.icon;
@@ -175,11 +218,6 @@ export default function DashboardPage() {
                       <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${card.bgColor}`}>
                         <Icon className={`h-4 w-4 ${card.color}`} />
                       </div>
-                      {'trend' in card && card.trend && (
-                        <span className="flex items-center gap-0.5 text-[11px] font-medium text-emerald-400">
-                          <TrendingUp className="h-3 w-3" />{card.trend}
-                        </span>
-                      )}
                       {'urgent' in card && card.urgent && (card.value ?? 0) > 0 && (
                         <span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />
                       )}

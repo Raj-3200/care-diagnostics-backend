@@ -198,6 +198,9 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { label: 'Users', href: '/dashboard/users', icon: 'Shield', roles: ['ADMIN'] },
   { label: 'Clients', href: '/dashboard/clients', icon: 'Building', roles: ['ADMIN'] },
+  { label: 'Audit Logs', href: '/dashboard/audit-logs', icon: 'Shield', roles: ['ADMIN'] },
+  { label: 'Lab Settings', href: '/dashboard/settings/lab', icon: 'Building', roles: ['ADMIN'] },
+  { label: 'Billing', href: '/dashboard/settings/billing', icon: 'Receipt', roles: ['ADMIN'] },
   { label: 'My Reports', href: '/dashboard/my-reports', icon: 'FileOutput', roles: ['CLIENT'] },
   { label: 'My Patients', href: '/dashboard/my-patients', icon: 'Users', roles: ['CLIENT'] },
   {

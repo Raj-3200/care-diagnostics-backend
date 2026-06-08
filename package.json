@@ -10,6 +10,8 @@
     "vercel-build": "prisma generate && tsc",
     "postinstall": "prisma generate",
     "start": "node dist/server.js",
+    "db:migrate": "prisma migrate deploy",
+    "db:seed": "ts-node prisma/seed.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
@@ -35,6 +37,7 @@
   "homepage": "https://github.com/Raj-3200/care-diagnostics#readme",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
+    "@prisma/adapter-pg": "^6.19.2",
     "@prisma/client": "^6.0.0",
     "@types/pdfkit": "^0.17.4",
     "bcrypt": "^5.1.1",
@@ -50,6 +53,7 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.1.1",
     "pdfkit": "^0.17.2",
+    "pg": "^8.21.0",
     "socket.io": "^4.8.3",
     "swagger-jsdoc": "^6.2.8",
     "swagger-ui-express": "^5.0.1",
@@ -76,6 +80,7 @@
     "prettier": "^3.2.4",
     "prisma": "^6.0.0",
     "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
   },

@@ -13,13 +13,6 @@ export const errorHandler = (
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _next: NextFunction,
 ): Response => {
-  // Log error
-  console.error('Error:', {
-    message: error.message,
-    stack: env.NODE_ENV === 'development' ? error.stack : undefined,
-    timestamp: new Date().toISOString(),
-  });
-
   // Handle AppError instances
   if (error instanceof AppError) {
     return sendError(res, error.message, error.statusCode, error.code);
@@ -76,5 +69,10 @@ export const errorHandler = (
 
   // Default error response
   const message = env.NODE_ENV === 'production' ? 'Internal server error' : error.message;
-  return sendError(res, message, StatusCodes.INTERNAL_SERVER_ERROR, 'INTERNAL_ERROR');
+  const response = {
+    success: false,
+    message,
+    ...(env.NODE_ENV === 'production' ? {} : { stack: error.stack }),
+  };
+  return res.status(StatusCodes.INTERNAL_SERVER_ERROR).json(response);
 };

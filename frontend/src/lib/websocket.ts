@@ -6,7 +6,10 @@ import { useAuthStore } from './auth-store';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:4000';
+const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
+const WS_URL = (process.env.NEXT_PUBLIC_WS_URL || apiUrl)
+  .replace(/^http/, 'ws')
+  .replace(/\/api\/v1\/?$/, '');
 
 let socket: Socket | null = null;
 
@@ -86,9 +89,7 @@ export function useWebSocket() {
         reconnectionAttempts: 5,
       });
 
-      s.on('connect', () => {
-        console.log('[WS] Connected');
-      });
+      s.on('connect', () => undefined);
 
       s.on('domain-event', handleDomainEvent);
       s.on('notification', handleNotification);
@@ -98,9 +99,7 @@ export function useWebSocket() {
         queryClient.invalidateQueries({ queryKey: [data.queue] });
       });
 
-      s.on('disconnect', (reason) => {
-        console.log('[WS] Disconnected:', reason);
-      });
+      s.on('disconnect', () => undefined);
 
       socketRef.current = s;
       socket = s;

@@ -94,10 +94,11 @@ export const listResults = async (
     const limit = Number(req.query.limit) || 30;
     const status = req.query.status as ResultStatus | undefined;
     const visitId = req.query.visitId as string | undefined;
+    const isAbnormal = req.query.isAbnormal as boolean | undefined;
 
     const { results, total } = await resultService.listResults(
       { page, limit },
-      { status, visitId },
+      { status, visitId, isAbnormal },
     );
 
     sendPaginated(res, results, page, limit, total);

@@ -11,11 +11,18 @@ interface AuthState {
   isAuthenticated: boolean;
   login: (credentials: LoginRequest) => Promise<void>;
   logout: () => void;
-  loadUser: () => Promise<void>;
+  loadUser: (options?: { force?: boolean }) => Promise<void>;
 }
 
 // Singleton promise — never fire /auth/me twice simultaneously
 let _loadPromise: Promise<void> | null = null;
+
+function clearPersistedAuth() {
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('cd_token');
+    localStorage.removeItem('care-auth');
+  }
+}
 
 export const useAuthStore = create<AuthState>()(
   persist(
@@ -27,6 +34,9 @@ export const useAuthStore = create<AuthState>()(
       login: async (credentials: LoginRequest) => {
         const { data } = await api.post<ApiResponse<LoginResponse>>('/auth/login', credentials);
         if (data.success && data.data) {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('cd_token', data.data.tokens.accessToken);
+          }
           set({ user: data.data.user, isAuthenticated: true, isLoading: false });
         }
       },
@@ -37,16 +47,16 @@ export const useAuthStore = create<AuthState>()(
         set({ user: null, isAuthenticated: false, isLoading: false });
         // Clear persisted storage on logout
         if (typeof window !== 'undefined') {
-          localStorage.removeItem('care-auth');
+          clearPersistedAuth();
+          window.location.href = '/login';
         }
-        window.location.href = '/login';
       },
 
-      loadUser: async () => {
+      loadUser: async (options = {}) => {
         // ── Fast path: user already in store (from localStorage persist) ──
         // Still validate with server silently in background
         const { user, isAuthenticated } = get();
-        if (isAuthenticated && user) {
+        if (!options.force && isAuthenticated && user) {
           set({ isLoading: false });
           // Background re-validation (silent — don't block UI)
           _silentValidate(set);
@@ -71,9 +81,11 @@ export const useAuthStore = create<AuthState>()(
               set({ user: data.data, isAuthenticated: true, isLoading: false });
             } else {
               set({ user: null, isAuthenticated: false, isLoading: false });
+              clearPersistedAuth();
             }
           } catch {
             set({ user: null, isAuthenticated: false, isLoading: false });
+            clearPersistedAuth();
           } finally {
             _loadPromise = null;
           }
@@ -114,11 +126,24 @@ async function _silentValidate(
       // Session expired server-side
       set({ user: null, isAuthenticated: false });
       if (typeof window !== 'undefined') {
-        localStorage.removeItem('care-auth');
+        clearPersistedAuth();
         window.location.href = '/login';
       }
     }
-  } catch {
+  } catch (error) {
+    const status =
+      typeof error === 'object' &&
+      error !== null &&
+      'response' in error &&
+      typeof (error as { response?: { status?: unknown } }).response?.status === 'number'
+        ? (error as { response: { status: number } }).response.status
+        : undefined;
+
+    if (status === 401 || status === 403) {
+      set({ user: null, isAuthenticated: false });
+      clearPersistedAuth();
+      return;
+    }
     // Network error — keep the cached user, don't log out
     // (prevents logout on brief connectivity issues)
   }

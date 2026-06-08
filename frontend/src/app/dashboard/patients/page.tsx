@@ -9,8 +9,9 @@ import { PageHeader } from '@/components/shared/page-header';
 import { DataTable, Column } from '@/components/shared/data-table';
 import { Input } from '@/components/ui/input';
 import { GENDER_LABELS } from '@/lib/constants';
+import { downloadCsv } from '@/lib/csv';
 import { format } from 'date-fns';
-import { Search, UserPlus, X } from 'lucide-react';
+import { Download, Search, UserPlus, X } from 'lucide-react';
 import { PageTransition } from '@/components/shared/page-transition';
 import { FadeIn } from '@/components/shared/animations';
 import { Button } from '@/components/ui/button';
@@ -98,6 +99,19 @@ export default function PatientsPage() {
     },
   ];
 
+  const exportPatients = () => {
+    const rows = (data?.data ?? []).map((patient) => ({
+      MRN: patient.mrn,
+      Name: `${patient.firstName} ${patient.lastName}`,
+      Gender: GENDER_LABELS[patient.gender],
+      DOB: format(new Date(patient.dateOfBirth), 'yyyy-MM-dd'),
+      Phone: patient.phone,
+      Email: patient.email ?? '',
+      Registered: format(new Date(patient.createdAt), 'yyyy-MM-dd'),
+    }));
+    downloadCsv(`patients-page-${page}.csv`, rows);
+  };
+
   return (
     <PageTransition>
       <PageHeader
@@ -134,6 +148,16 @@ export default function PatientsPage() {
               {data.meta.total} patient{data.meta.total !== 1 ? 's' : ''}
             </span>
           )}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={exportPatients}
+            disabled={(data?.data.length ?? 0) === 0}
+            className="h-10 gap-2 rounded-lg border-border/50 text-[13px]"
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
         </div>
       </FadeIn>
 

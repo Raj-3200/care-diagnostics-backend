@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import api, { getErrorMessage } from '@/lib/api';
+import api, { API_BASE_URL, getErrorMessage } from '@/lib/api';
 import type { ApiResponse, ClientReport, Patient } from '@/types';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent } from '@/components/ui/card';
@@ -30,7 +30,7 @@ import { FileText, Download, Eye, Loader2, FileSearch, Upload } from 'lucide-rea
 import { PageTransition } from '@/components/shared/page-transition';
 import { StaggerContainer, StaggerItem } from '@/components/shared/animations';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+const API_ORIGIN = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
 
 export default function MyReportsPage() {
   const [page, setPage] = useState(1);
@@ -168,7 +168,7 @@ export default function MyReportsPage() {
                         asChild
                       >
                         <a
-                          href={`${API_URL.replace('/api/v1', '')}${report.fileUrl}`}
+                          href={`${API_ORIGIN}${report.fileUrl}`}
                           target="_blank"
                           rel="noopener noreferrer"
                         >
@@ -182,7 +182,7 @@ export default function MyReportsPage() {
                         asChild
                       >
                         <a
-                          href={`${API_URL.replace('/api/v1', '')}${report.fileUrl}`}
+                          href={`${API_ORIGIN}${report.fileUrl}`}
                           download={report.fileName}
                         >
                           <Download className="h-3 w-3" />

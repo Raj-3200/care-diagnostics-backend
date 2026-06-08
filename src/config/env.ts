@@ -3,9 +3,14 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+if (process.env.JWT_SECRET) {
+  process.env.JWT_ACCESS_SECRET ||= process.env.JWT_SECRET;
+  process.env.JWT_REFRESH_SECRET ||= process.env.JWT_SECRET;
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  PORT: z.string().transform(Number).pipe(z.number().min(1).max(65535)).default('4000'),
+  PORT: z.string().transform(Number).pipe(z.number().min(1).max(65535)).default('5000'),
   RATE_LIMIT_WINDOW_MS: z
     .string()
     .transform(Number)
@@ -16,9 +21,10 @@ const envSchema = z.object({
   REDIS_URL: z.string().optional().default(''),
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
+  JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters').optional(),
   JWT_ACCESS_EXPIRY: z.string().default('15m'),
   JWT_REFRESH_EXPIRY: z.string().default('7d'),
-  CORS_ORIGIN: z.string().default('*'),
+  CORS_ORIGIN: z.string().default('https://your-frontend.vercel.app'),
   ANTHROPIC_API_KEY: z.string().optional().default(''),
   DEFAULT_TENANT_ID: z.string().uuid().optional().default('00000000-0000-0000-0000-000000000001'),
 });

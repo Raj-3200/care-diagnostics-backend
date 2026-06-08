@@ -5,6 +5,10 @@ const isVercel = !!process.env.VERCEL;
 const isProd = process.env.NODE_ENV === 'production';
 
 const nextConfig: NextConfig = {
+  turbopack: {
+    root: process.cwd(),
+  },
+
   // standalone: for Docker builds only — disabled on Vercel
   output: isProd && !isVercel ? 'standalone' : undefined,
 

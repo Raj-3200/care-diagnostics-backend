@@ -75,16 +75,25 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [checkedExistingSession, setCheckedExistingSession] = useState(false);
 
   useEffect(() => {
-    loadUser();
+    let cancelled = false;
+
+    loadUser({ force: true }).finally(() => {
+      if (!cancelled) setCheckedExistingSession(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, [loadUser]);
 
   useEffect(() => {
-    if (!isLoading && isAuthenticated) {
+    if (checkedExistingSession && !isLoading && isAuthenticated) {
       router.replace('/dashboard');
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [checkedExistingSession, isLoading, isAuthenticated, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

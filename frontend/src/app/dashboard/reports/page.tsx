@@ -3,8 +3,16 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api, { getErrorMessage } from '@/lib/api';
-import type { ApiResponse, Report } from '@/types';
+import { getErrorMessage } from '@/lib/api';
+import { canDownloadReport, getDiagnosticWorkflow } from '@/lib/workflow';
+import type { Report } from '@/types';
+import {
+  approveReport as approveReportRequest,
+  dispatchReport as dispatchReportRequest,
+  downloadReportPdf,
+  generateReport as generateReportRequest,
+  listReports,
+} from '@/services/reports';
 import { PageHeader } from '@/components/shared/page-header';
 import { DataTable, Column } from '@/components/shared/data-table';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -34,14 +42,13 @@ export default function ReportsPage() {
     queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), limit: '20' });
       if (status && status !== 'ALL') params.set('status', status);
-      const { data } = await api.get<ApiResponse<Report[]>>(`/reports?${params}`);
-      return data;
+      return listReports(params);
     },
   });
 
   const generateReport = useMutation({
     mutationFn: async (reportId: string) => {
-      await api.patch(`/reports/${reportId}/generate`);
+      await generateReportRequest(reportId);
     },
     onSuccess: () => {
       toast.success('Report generated successfully');
@@ -52,7 +59,7 @@ export default function ReportsPage() {
 
   const approveReport = useMutation({
     mutationFn: async (reportId: string) => {
-      await api.patch(`/reports/${reportId}/approve`);
+      await approveReportRequest(reportId);
     },
     onSuccess: () => {
       toast.success('Report approved');
@@ -63,7 +70,7 @@ export default function ReportsPage() {
 
   const dispatchReport = useMutation({
     mutationFn: async (reportId: string) => {
-      await api.patch(`/reports/${reportId}/dispatch`);
+      await dispatchReportRequest(reportId);
     },
     onSuccess: () => {
       toast.success('Report dispatched');
@@ -72,18 +79,18 @@ export default function ReportsPage() {
     onError: (err) => toast.error(getErrorMessage(err)),
   });
 
-  const handleDownloadPDF = async (reportId: string, reportNumber: string) => {
+  const handleDownloadPDF = async (report: Report) => {
+    if (!canDownloadReport(report)) {
+      toast.error('Download is available after the report is approved.');
+      return;
+    }
+
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1'}/reports/${reportId}/download`,
-        { credentials: 'include' },
-      );
-      if (!response.ok) throw new Error('Failed to download report');
-      const blob = await response.blob();
+      const blob = await downloadReportPdf(report.id);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `${reportNumber}.pdf`;
+      a.download = `${report.reportNumber}.pdf`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
@@ -137,6 +144,23 @@ export default function ReportsPage() {
       ),
     },
     {
+      header: 'Readiness',
+      cell: (row) => {
+        const workflow = getDiagnosticWorkflow(row.visit?.testOrders ?? []);
+        return (
+          <div>
+            <p className={`text-[13px] font-medium ${workflow.reportReady ? 'text-emerald-600' : 'text-amber-600'}`}>
+              {workflow.reportReady ? 'Ready for generation' : workflow.reason}
+            </p>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">
+              {workflow.processed}/{workflow.total} samples processed · {workflow.verified}/
+              {workflow.total} results verified
+            </p>
+          </div>
+        );
+      },
+    },
+    {
       header: 'Created',
       cell: (row) => (
         <span className="text-[13px] text-muted-foreground">
@@ -146,13 +170,18 @@ export default function ReportsPage() {
     },
     {
       header: 'Actions',
-      cell: (row) => (
-        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+      cell: (row) => {
+        const workflow = getDiagnosticWorkflow(row.visit?.testOrders ?? []);
+        const downloadReady = canDownloadReport(row);
+
+        return (
+          <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => handleDownloadPDF(row.id, row.reportNumber)}
-            title="Download PDF"
+            onClick={() => handleDownloadPDF(row)}
+            disabled={!downloadReady}
+            title={downloadReady ? 'Download PDF' : 'Download after approval'}
             className="h-8 w-8 rounded-lg p-0 text-muted-foreground hover:text-foreground"
           >
             <Download className="h-3.5 w-3.5" />
@@ -162,7 +191,8 @@ export default function ReportsPage() {
               size="sm"
               variant="outline"
               onClick={() => generateReport.mutate(row.id)}
-              disabled={generateReport.isPending}
+              disabled={generateReport.isPending || !workflow.reportReady}
+              title={workflow.reportReady ? 'Generate report' : workflow.reason}
               className="h-8 gap-1.5 rounded-lg border-border/50 text-[12px]"
             >
               {generateReport.isPending ? (
@@ -205,8 +235,9 @@ export default function ReportsPage() {
               Dispatch
             </Button>
           )}
-        </div>
-      ),
+          </div>
+        );
+      },
     },
   ];
 

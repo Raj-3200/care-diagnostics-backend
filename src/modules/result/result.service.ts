@@ -74,7 +74,7 @@ export const getResultByTestOrder = async (testOrderId: string) => {
  */
 export const listResults = async (
   pagination: PaginationParams,
-  filters?: { status?: ResultStatus; visitId?: string },
+  filters?: { status?: ResultStatus; visitId?: string; isAbnormal?: boolean },
 ) => {
   return resultRepository.findAll(pagination, filters);
 };

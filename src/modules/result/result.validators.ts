@@ -25,6 +25,10 @@ export const rejectResultSchema = z.object({
 export const resultListSchema = z.object({
   status: z.nativeEnum(ResultStatus).optional(),
   visitId: z.string().uuid().optional(),
+  isAbnormal: z
+    .enum(['true', 'false'])
+    .optional()
+    .transform((value) => (value === undefined ? undefined : value === 'true')),
   page: z
     .string()
     .optional()

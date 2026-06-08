@@ -2,7 +2,7 @@
 
 import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api, { getErrorMessage } from '@/lib/api';
+import api, { API_BASE_URL, getErrorMessage } from '@/lib/api';
 import type { ApiResponse, User, ClientReport } from '@/types';
 import { PageHeader } from '@/components/shared/page-header';
 import { DataTable, Column } from '@/components/shared/data-table';
@@ -33,7 +33,7 @@ import {
 import { PageTransition } from '@/components/shared/page-transition';
 import { useRouter } from 'next/navigation';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api/v1';
+const API_ORIGIN = API_BASE_URL.replace(/\/api\/v1\/?$/, '');
 
 export default function ClientsPage() {
   const router = useRouter();
@@ -463,7 +463,7 @@ export default function ClientsPage() {
                   <div className="flex items-center gap-1.5">
                     <Button size="sm" variant="ghost" className="h-8 w-8 p-0" asChild>
                       <a
-                        href={`${API_URL.replace('/api/v1', '')}${report.fileUrl}`}
+                        href={`${API_ORIGIN}${report.fileUrl}`}
                         target="_blank"
                         rel="noopener noreferrer"
                       >

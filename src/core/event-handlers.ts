@@ -197,7 +197,7 @@ export function registerEventHandlers(): void {
     }
   });
 
-  console.log('✅ Domain event handlers registered');
+  console.info('✅ Domain event handlers registered');
 }
 
 // ─── Helper ──────────────────────────────────────────────

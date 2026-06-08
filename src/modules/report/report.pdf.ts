@@ -28,6 +28,13 @@ interface TestResult {
 }
 
 interface ReportData {
+  lab?: {
+    name?: string | null;
+    address?: string | null;
+    phone?: string | null;
+    email?: string | null;
+    logoUrl?: string | null;
+  };
   reportNumber: string;
   status: string;
   visitNumber: string;
@@ -97,18 +104,27 @@ export function generateReportPDF(data: ReportData): PassThrough {
   doc.pipe(stream);
 
   const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+  const lab = data.lab ?? {};
+  const labName = lab.name || 'Care Diagnostics';
+  const labAddress = lab.address || 'Advanced Laboratory & Diagnostic Centre';
+  const labContact = [
+    lab.phone ? `Phone: ${lab.phone}` : null,
+    lab.email ? `Email: ${lab.email}` : null,
+  ]
+    .filter(Boolean)
+    .join('  |  ');
 
   // ─── HEADER / LETTERHEAD ─────────────────────────────────
-  doc.fontSize(22).fillColor(COLORS.primary).text('Care Diagnostics', { align: 'center' });
+  doc.fontSize(22).fillColor(COLORS.primary).text(labName, { align: 'center' });
 
   doc
     .fontSize(9)
     .fillColor(COLORS.textLight)
-    .text('Advanced Laboratory & Diagnostic Centre', { align: 'center' })
-    .text('123 Healthcare Avenue, Medical District, New Delhi - 110001', { align: 'center' })
-    .text('Phone: +91 11 2345 6789  |  Email: reports@carediagnostics.in  |  NABL Accredited', {
-      align: 'center',
-    });
+    .text(labAddress, { align: 'center' });
+
+  if (labContact) {
+    doc.text(labContact, { align: 'center' });
+  }
 
   doc.moveDown(0.3);
 

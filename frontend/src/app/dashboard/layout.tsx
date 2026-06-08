@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/lib/auth-store';
 import { Sidebar } from '@/components/layout/sidebar';
@@ -12,19 +12,27 @@ import { Activity } from 'lucide-react';
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { isAuthenticated, isLoading, loadUser } = useAuthStore();
+  const [checkingSession, setCheckingSession] = useState(true);
 
   useEffect(() => {
-    loadUser();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    let cancelled = false;
+
+    loadUser({ force: true }).finally(() => {
+      if (!cancelled) setCheckingSession(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadUser]);
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.push('/login');
+    if (!checkingSession && !isLoading && !isAuthenticated) {
+      router.replace('/login');
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [checkingSession, isLoading, isAuthenticated, router]);
 
-  if (isLoading) {
+  if (checkingSession || isLoading) {
     return (
       <div className="flex h-screen flex-col items-center justify-center gap-4 bg-background">
         <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary shadow-lg shadow-primary/30">

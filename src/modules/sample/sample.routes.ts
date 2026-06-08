@@ -78,7 +78,7 @@ router.get('/:id', (req, res, next) => void sampleController.getSampleById(req, 
  */
 router.post(
   '/:id/collect',
-  authorize(Role.LAB_TECHNICIAN),
+  authorize(Role.ADMIN, Role.LAB_TECHNICIAN),
   validate(recordSampleCollectionSchema),
   (req, res, next) => void sampleController.recordSampleCollection(req, res, next),
 );

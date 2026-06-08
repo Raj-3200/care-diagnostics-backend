@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
+import { useAuthStore } from '@/lib/auth-store';
 import type { ApiResponse, Sample } from '@/types';
 import { PageHeader } from '@/components/shared/page-header';
 import { DataTable, Column } from '@/components/shared/data-table';
@@ -12,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { SAMPLE_STATUS_LABELS, SAMPLE_STATUS_COLORS, SAMPLE_TYPE_LABELS } from '@/lib/constants';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { Loader2, FlaskRound, Microscope } from 'lucide-react';
+import { Loader2, FlaskRound, Microscope, Pipette } from 'lucide-react';
 import { PageTransition } from '@/components/shared/page-transition';
 import { FadeIn } from '@/components/shared/animations';
 
@@ -20,6 +21,7 @@ export default function SamplesPage() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState<string>('ALL');
   const qc = useQueryClient();
+  const user = useAuthStore((s) => s.user);
 
   const { data, isLoading } = useQuery({
     queryKey: ['samples', page, status],
@@ -29,6 +31,22 @@ export default function SamplesPage() {
       const { data } = await api.get<ApiResponse<Sample[]>>(`/samples?${params}`);
       return data;
     },
+  });
+
+  const collectPendingSample = useMutation({
+    mutationFn: async (sampleId: string) => {
+      if (!user?.id) throw new Error('Current user is not loaded');
+
+      await api.post(`/samples/${sampleId}/collect`, {
+        collectedById: user.id,
+        collectedAt: new Date().toISOString(),
+      });
+    },
+    onSuccess: () => {
+      toast.success('Sample collected');
+      qc.invalidateQueries({ queryKey: ['samples'] });
+    },
+    onError: (err) => toast.error(getErrorMessage(err)),
   });
 
   const receiveInLab = useMutation({
@@ -90,6 +108,18 @@ export default function SamplesPage() {
       header: 'Actions',
       cell: (row) => (
         <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+          {row.status === 'PENDING_COLLECTION' && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => collectPendingSample.mutate(row.id)}
+              disabled={collectPendingSample.isPending}
+              className="h-8 gap-1.5 rounded-lg border-violet-200 bg-violet-50 text-[12px] text-violet-700 hover:bg-violet-100"
+            >
+              {collectPendingSample.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Pipette className="h-3 w-3" />}
+              Collect
+            </Button>
+          )}
           {row.status === 'COLLECTED' && (
             <Button
               size="sm"
@@ -144,7 +174,7 @@ export default function SamplesPage() {
         data={data?.data ?? []}
         isLoading={isLoading}
         emptyMessage="No samples found"
-        emptyDescription="Samples will appear here once they are collected for test orders."
+        emptyDescription="Sample tasks appear here after tests are ordered for visits."
         pagination={{
           page,
           totalPages: data?.meta?.totalPages ?? 1,

@@ -24,7 +24,7 @@ export const findByTestOrderId = async (testOrderId: string) => {
 
 export const findAll = async (
   pagination: PaginationParams,
-  filters?: { status?: ResultStatus; visitId?: string },
+  filters?: { status?: ResultStatus; visitId?: string; isAbnormal?: boolean },
 ) => {
   const { page, limit } = pagination;
   const skip = (page - 1) * limit;
@@ -34,6 +34,7 @@ export const findAll = async (
   };
 
   if (filters?.status) whereClause.status = filters.status;
+  if (filters?.isAbnormal !== undefined) whereClause.isAbnormal = filters.isAbnormal;
   if (filters?.visitId) {
     whereClause.testOrder = { visit: { id: filters.visitId } };
   }

@@ -17,7 +17,7 @@ export function initWebSocket(httpServer: HttpServer): Server {
 
   io = new Server(httpServer, {
     cors: {
-      origin: allowedOrigins.includes('*') ? true : allowedOrigins,
+      origin: allowedOrigins,
       credentials: true,
     },
     transports: ['websocket', 'polling'],
@@ -60,7 +60,6 @@ export function initWebSocket(httpServer: HttpServer): Server {
   // Wire up domain events → WebSocket broadcasts
   wireEventsToBroadcast();
 
-  console.log('✅ WebSocket server initialized');
   return io;
 }
 

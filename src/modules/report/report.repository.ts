@@ -2,12 +2,22 @@ import { prisma } from '../../config/database.js';
 import { Prisma, ReportStatus } from '@prisma/client';
 
 export const reportIncludes = {
+  tenant: {
+    select: {
+      name: true,
+      address: true,
+      phone: true,
+      email: true,
+      logoUrl: true,
+    },
+  },
   visit: {
     include: {
       patient: true,
       testOrders: {
         include: {
           test: true,
+          sample: true,
           result: true,
         },
       },

@@ -3,6 +3,7 @@ import { ConflictError, NotFoundError } from '../../shared/errors/AppError.js';
 import { PaginationParams } from '../../shared/types/common.types.js';
 import { prisma } from '../../config/database.js';
 import { Prisma } from '@prisma/client';
+import crypto from 'crypto';
 import {
   CreateTestOrderInput,
   UpdateTestOrderInput,
@@ -12,6 +13,16 @@ import { TestOrderWithRelations } from './testOrder.repository.js';
 import { env } from '../../config/env.js';
 
 const MAX_SERIALIZABLE_RETRIES = 3;
+
+function generateSampleBarcode(): string {
+  const now = new Date();
+  const date =
+    now.getFullYear().toString() +
+    String(now.getMonth() + 1).padStart(2, '0') +
+    String(now.getDate()).padStart(2, '0');
+  const suffix = crypto.randomBytes(3).toString('hex').slice(0, 4).toUpperCase();
+  return `SMP-${date}-${suffix}`;
+}
 
 /**
  * Create a test order for a visit
@@ -54,11 +65,28 @@ export const createTestOrder = async (
   }
 
   try {
-    return await testOrderRepository.create({
+    const createdOrder = await testOrderRepository.create({
       ...data,
       tenantId: env.DEFAULT_TENANT_ID,
       notes: data.notes ?? undefined,
     });
+
+    await prisma.sample.create({
+      data: {
+        tenantId: visit.tenantId,
+        testOrderId: createdOrder.id,
+        barcode: generateSampleBarcode(),
+        sampleType: test.sampleType,
+        status: 'PENDING_COLLECTION',
+      },
+    });
+
+    const withSample = await testOrderRepository.findById(createdOrder.id);
+    if (!withSample) {
+      throw new NotFoundError('Test order not found after creation');
+    }
+
+    return withSample;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
       throw new ConflictError('This test is already ordered for this visit');
@@ -96,7 +124,7 @@ export const bulkCreateTestOrders = async (
         async (tx) => {
           const visit = await tx.visit.findFirst({
             where: { id: visitId, deletedAt: null },
-            select: { id: true },
+            select: { id: true, tenantId: true },
           });
 
           if (!visit) {
@@ -105,7 +133,7 @@ export const bulkCreateTestOrders = async (
 
           const testsInCatalog = await tx.test.findMany({
             where: { id: { in: testIds }, deletedAt: null },
-            select: { id: true, isActive: true },
+            select: { id: true, isActive: true, sampleType: true },
           });
 
           if (testsInCatalog.length !== testIds.length) {
@@ -127,23 +155,42 @@ export const bulkCreateTestOrders = async (
           }
 
           const createdOrders = await Promise.all(
-            tests.map((test) =>
-              tx.testOrder.create({
+            tests.map(async (test) => {
+              const catalogTest = testsInCatalog.find((item) => item.id === test.testId);
+              if (!catalogTest) {
+                throw new NotFoundError('Test not found');
+              }
+
+              const createdOrder = await tx.testOrder.create({
                 data: {
-                  tenantId: env.DEFAULT_TENANT_ID,
+                  tenantId: visit.tenantId,
                   visitId,
                   testId: test.testId,
                   priority: test.priority,
                   notes: test.notes ?? undefined,
                 },
+              });
+
+              await tx.sample.create({
+                data: {
+                  tenantId: visit.tenantId,
+                  testOrderId: createdOrder.id,
+                  barcode: generateSampleBarcode(),
+                  sampleType: catalogTest.sampleType,
+                  status: 'PENDING_COLLECTION',
+                },
+              });
+
+              return tx.testOrder.findUniqueOrThrow({
+                where: { id: createdOrder.id },
                 include: {
                   visit: { include: { patient: true } },
                   test: true,
                   sample: true,
                   result: true,
                 },
-              }),
-            ),
+              });
+            }),
           );
 
           return createdOrders;
@@ -242,8 +289,8 @@ export const cancelTestOrder = async (testOrderId: string, _cancelledByUserId: s
     throw new NotFoundError('Test order not found');
   }
 
-  // Check if sample has been collected
-  if (existingTestOrder.sample) {
+  // Check if sample has moved beyond the initial collection queue
+  if (existingTestOrder.sample && existingTestOrder.sample.status !== 'PENDING_COLLECTION') {
     throw new ConflictError(
       'Cannot cancel test order after sample has been collected. Please contact administrator.',
     );
@@ -256,6 +303,15 @@ export const cancelTestOrder = async (testOrderId: string, _cancelledByUserId: s
     );
   }
 
-  // Soft delete
-  await testOrderRepository.softDelete(testOrderId);
+  // Soft delete the pending sample together with the order
+  await prisma.$transaction([
+    prisma.sample.updateMany({
+      where: { testOrderId, status: 'PENDING_COLLECTION', deletedAt: null },
+      data: { deletedAt: new Date() },
+    }),
+    prisma.testOrder.update({
+      where: { id: testOrderId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    }),
+  ]);
 };

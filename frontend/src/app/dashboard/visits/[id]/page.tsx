@@ -3,7 +3,9 @@
 import { useParams, useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api, { getErrorMessage } from '@/lib/api';
-import type { ApiResponse, Visit, TestOrder } from '@/types';
+import { useAuthStore } from '@/lib/auth-store';
+import { getDiagnosticWorkflow } from '@/lib/workflow';
+import type { ApiResponse, Visit, TestOrder, Report } from '@/types';
 import { PageHeader } from '@/components/shared/page-header';
 import { Card, CardContent } from '@/components/ui/card';
 import { StatusBadge } from '@/components/shared/status-badge';
@@ -31,7 +33,7 @@ import {
   AlertTriangle,
   StickyNote,
   CheckCircle2,
-  Download,
+  ArrowRight,
 } from 'lucide-react';
 import { PageTransition } from '@/components/shared/page-transition';
 import { FadeIn, StaggerContainer, StaggerItem } from '@/components/shared/animations';
@@ -47,6 +49,7 @@ export default function VisitDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const qc = useQueryClient();
+  const user = useAuthStore((s) => s.user);
 
   const { data: visit, isLoading } = useQuery({
     queryKey: ['visit', id],
@@ -66,8 +69,18 @@ export default function VisitDetailPage() {
   });
 
   const collectSample = useMutation({
-    mutationFn: async (testOrderId: string) => {
-      await api.post(`/samples/collect`, { testOrderId });
+    mutationFn: async (order: TestOrder) => {
+      if (order.sample?.id) {
+        if (!user?.id) throw new Error('Current user is not loaded');
+
+        await api.post(`/samples/${order.sample.id}/collect`, {
+          collectedById: user.id,
+          collectedAt: new Date().toISOString(),
+        });
+        return;
+      }
+
+      await api.post(`/samples/collect`, { testOrderId: order.id });
     },
     onSuccess: () => {
       toast.success('Sample collected');
@@ -90,11 +103,14 @@ export default function VisitDetailPage() {
 
   const createReport = useMutation({
     mutationFn: async () => {
-      await api.post('/reports', { visitId: id });
+      const { data } = await api.post<ApiResponse<Report>>('/reports', { visitId: id });
+      return data.data;
     },
-    onSuccess: () => {
-      toast.success('Report created');
+    onSuccess: (report) => {
+      toast.success('Report ready');
       qc.invalidateQueries({ queryKey: ['visit', id] });
+      qc.invalidateQueries({ queryKey: ['reports'] });
+      router.push(`/dashboard/reports/${report.id}`);
     },
     onError: (err) => toast.error(getErrorMessage(err)),
   });
@@ -115,6 +131,7 @@ export default function VisitDetailPage() {
   if (!visit) return <p className="py-12 text-center text-muted-foreground">Visit not found.</p>;
 
   const patient = visit.patient;
+  const diagnosticWorkflow = getDiagnosticWorkflow(testOrders ?? []);
 
   return (
     <PageTransition>
@@ -215,12 +232,37 @@ export default function VisitDetailPage() {
               <div className="mb-2 text-[12px] font-medium text-muted-foreground">
                 Quick Actions
               </div>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/40 bg-muted/20 p-3">
+                <div>
+                  <p className="text-[13px] font-medium text-foreground">
+                    {diagnosticWorkflow.reportReady
+                      ? 'Report prerequisites complete'
+                      : diagnosticWorkflow.reason}
+                  </p>
+                  <p className="mt-0.5 text-[12px] text-muted-foreground">
+                    {diagnosticWorkflow.processed}/{diagnosticWorkflow.total} samples processed ·{' '}
+                    {diagnosticWorkflow.verified}/{diagnosticWorkflow.total} results verified
+                  </p>
+                </div>
+                {!diagnosticWorkflow.reportReady && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.push(diagnosticWorkflow.nextHref)}
+                    className="h-8 gap-1.5 rounded-lg border-border/50 text-[12px]"
+                  >
+                    {diagnosticWorkflow.nextLabel}
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
               <div className="flex flex-wrap gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => createReport.mutate()}
-                  disabled={createReport.isPending}
+                  disabled={createReport.isPending || !diagnosticWorkflow.reportReady}
+                  title={diagnosticWorkflow.reportReady ? 'Prepare report' : diagnosticWorkflow.reason}
                   className="h-9 gap-1.5 rounded-lg border-border/50 text-[12.5px]"
                 >
                   {createReport.isPending ? (
@@ -228,7 +270,7 @@ export default function VisitDetailPage() {
                   ) : (
                     <FileText className="h-3.5 w-3.5" />
                   )}
-                  Create Report
+                  Prepare Report
                 </Button>
                 <Button
                   variant="outline"
@@ -276,12 +318,11 @@ export default function VisitDetailPage() {
                   <div className="ml-auto flex items-center gap-3 text-[11px]">
                     <span className="flex items-center gap-1 text-blue-600">
                       <Pipette className="h-3 w-3" />
-                      {testOrders.filter((o) => o.sample).length}/{testOrders.length} collected
+                      {diagnosticWorkflow.collected}/{diagnosticWorkflow.total} collected
                     </span>
                     <span className="flex items-center gap-1 text-emerald-600">
                       <CheckCircle2 className="h-3 w-3" />
-                      {testOrders.filter((o) => o.result?.status === 'VERIFIED').length}/
-                      {testOrders.length} verified
+                      {diagnosticWorkflow.verified}/{diagnosticWorkflow.total} verified
                     </span>
                   </div>
                 </>
@@ -325,11 +366,11 @@ export default function VisitDetailPage() {
                             labelMap={RESULT_STATUS_LABELS}
                           />
                         )}
-                        {!order.sample && (
+                        {(!order.sample || order.sample.status === 'PENDING_COLLECTION') && (
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() => collectSample.mutate(order.id)}
+                            onClick={() => collectSample.mutate(order)}
                             disabled={collectSample.isPending}
                             className="h-8 gap-1.5 rounded-lg border-violet-200 bg-violet-50 text-[12px] text-violet-700 hover:bg-violet-100"
                           >

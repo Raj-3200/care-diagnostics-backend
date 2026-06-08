@@ -9,6 +9,7 @@ export const sendSuccess = <T>(
 ): Response => {
   const response: ApiResponse<T> = {
     success: true,
+    message: statusCode === StatusCodes.CREATED ? 'Created' : 'OK',
     data,
   };
   return res.status(statusCode).json(response);
@@ -23,6 +24,8 @@ export const sendError = (
 ): Response => {
   const response: ApiResponse = {
     success: false,
+    message,
+    errors: details ?? {},
     error: {
       message,
       code,
@@ -43,6 +46,7 @@ export const sendPaginated = <T>(
   const totalPages = Math.ceil(total / limit);
   const response: ApiResponse<T[]> = {
     success: true,
+    message: 'OK',
     data: items,
     meta: {
       page,

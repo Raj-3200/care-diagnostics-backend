@@ -29,9 +29,10 @@ import {
   INVOICE_STATUS_COLORS,
   PAYMENT_METHOD_LABELS,
 } from '@/lib/constants';
+import { downloadCsv } from '@/lib/csv';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
-import { Loader2, CreditCard } from 'lucide-react';
+import { Loader2, CreditCard, Download } from 'lucide-react';
 import { PageTransition } from '@/components/shared/page-transition';
 import { FadeIn } from '@/components/shared/animations';
 
@@ -174,9 +175,36 @@ export default function InvoicesPage() {
     },
   ];
 
+  const exportInvoices = () => {
+    const rows = (data?.data ?? []).map((invoice) => ({
+      Invoice: invoice.invoiceNumber,
+      Visit: invoice.visit?.visitNumber ?? '',
+      Patient: invoice.visit?.patient
+        ? `${invoice.visit.patient.firstName} ${invoice.visit.patient.lastName}`
+        : '',
+      NetAmount: Number(invoice.netAmount).toFixed(2),
+      Paid: Number(invoice.paidAmount).toFixed(2),
+      Due: Number(invoice.dueAmount).toFixed(2),
+      Status: INVOICE_STATUS_LABELS[invoice.status],
+      Created: format(new Date(invoice.createdAt), 'yyyy-MM-dd'),
+    }));
+    downloadCsv(`invoices-page-${page}.csv`, rows);
+  };
+
   return (
     <PageTransition>
-      <PageHeader title="Invoices" description="Manage billing and payment records" />
+      <PageHeader title="Invoices" description="Manage billing and payment records">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={exportInvoices}
+          disabled={(data?.data.length ?? 0) === 0}
+          className="h-9 gap-2 rounded-lg border-border/50 text-[13px]"
+        >
+          <Download className="h-4 w-4" />
+          Export CSV
+        </Button>
+      </PageHeader>
 
       <FadeIn delay={0.05}>
         <div className="mb-5 flex items-center gap-3">
